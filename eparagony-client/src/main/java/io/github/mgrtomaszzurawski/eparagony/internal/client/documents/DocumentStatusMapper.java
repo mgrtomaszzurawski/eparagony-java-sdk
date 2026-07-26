@@ -69,22 +69,22 @@ public final class DocumentStatusMapper {
         JsonNode printedNode = root.get(FIELD_PRINTED);
         Boolean printed = printedNode != null && printedNode.isBoolean() ? printedNode.asBoolean() : null;
 
-        return new DocumentStatus(
-                DocumentState.fromWireValue(text(root, FIELD_STATUS)),
-                documentToken(root),
-                transactionToken(root),
-                text(root, FIELD_DOCUMENT_TYPE),
-                text(root, FIELD_PROCESSING_MODE),
-                fiscalDevice(root),
-                text(root, FIELD_FISCAL_DOCUMENT_ID),
-                integer(root, FIELD_FISCAL_DOCUMENT_NUMBER),
-                integer(root, FIELD_RECEIPT_NUMBER),
-                printed,
-                instant(root),
-                text(root, FIELD_ORDER_ID),
-                text(root, FIELD_MERCHANT_DOCUMENT_ID),
-                text(root, FIELD_DOCUMENT_URL),
-                errorMessage(root));
+        return DocumentStatus.builder(DocumentState.fromWireValue(text(root, FIELD_STATUS)))
+                .documentToken(documentToken(root))
+                .transactionToken(transactionToken(root))
+                .documentType(text(root, FIELD_DOCUMENT_TYPE))
+                .processingMode(text(root, FIELD_PROCESSING_MODE))
+                .fiscalDeviceUniqueNumber(fiscalDevice(root))
+                .fiscalDocumentId(text(root, FIELD_FISCAL_DOCUMENT_ID))
+                .fiscalDocumentNumber(integer(root, FIELD_FISCAL_DOCUMENT_NUMBER))
+                .receiptNumber(integer(root, FIELD_RECEIPT_NUMBER))
+                .printed(printed)
+                .endTime(instant(root))
+                .orderId(text(root, FIELD_ORDER_ID))
+                .merchantDocumentId(text(root, FIELD_MERCHANT_DOCUMENT_ID))
+                .documentUrl(text(root, FIELD_DOCUMENT_URL))
+                .errorMessage(errorMessage(root))
+                .build();
     }
 
     private static DocumentToken documentToken(JsonNode root) {

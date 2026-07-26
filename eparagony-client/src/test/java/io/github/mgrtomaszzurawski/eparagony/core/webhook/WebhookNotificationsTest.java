@@ -98,8 +98,10 @@ class WebhookNotificationsTest {
         String body = "{\"status\":\"CONFIRMED\"}";
         String foreignSignature = signature("{\"status\":\"ERROR\"}");
 
+        byte[] rawBody = bytes(body);
+
         assertThrows(WebhookSignatureException.class,
-                () -> notifications.documentStatus(bytes(body), foreignSignature));
+                () -> notifications.documentStatus(rawBody, foreignSignature));
     }
 
     @Test
@@ -107,8 +109,10 @@ class WebhookNotificationsTest {
     void refusesUnsignedNotification() {
         String body = "{\"status\":\"CONFIRMED\"}";
 
+        byte[] rawBody = bytes(body);
+
         assertThrows(WebhookSignatureException.class,
-                () -> notifications.documentStatus(bytes(body), null));
+                () -> notifications.documentStatus(rawBody, null));
     }
 
     private static byte[] bytes(String body) {

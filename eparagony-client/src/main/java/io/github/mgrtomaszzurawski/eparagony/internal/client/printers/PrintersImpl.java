@@ -42,6 +42,7 @@ public final class PrintersImpl implements Printers {
 
     private static final String PATH_PARAM_DEVICE = "fiscalDeviceUniqueNumber";
 
+
     private static final String FIELD_STATUS = "status";
     private static final String FIELD_LAST_ACTIVE_AT = "lastActiveAt";
     private static final String FIELD_CRK_STATUS = "crkStatus";
@@ -63,7 +64,7 @@ public final class PrintersImpl implements Printers {
 
     @Override
     public PrinterStatus status(FiscalDeviceUniqueNumber fiscalDeviceUniqueNumber) {
-        Objects.requireNonNull(fiscalDeviceUniqueNumber, "fiscalDeviceUniqueNumber");
+        Objects.requireNonNull(fiscalDeviceUniqueNumber, PATH_PARAM_DEVICE);
         scopeGuard.require(Scope.PRINTER_GET, "printers().status()");
         String path = PathTemplate.expand(
                 ApiPaths.PRINTER_STATUS, PATH_PARAM_DEVICE, fiscalDeviceUniqueNumber.value());
@@ -77,7 +78,7 @@ public final class PrintersImpl implements Printers {
     @Override
     public List<DailyReport> dailyReports(FiscalDeviceUniqueNumber fiscalDeviceUniqueNumber,
             Instant issuedFrom, Instant issuedTo) {
-        Objects.requireNonNull(fiscalDeviceUniqueNumber, "fiscalDeviceUniqueNumber");
+        Objects.requireNonNull(fiscalDeviceUniqueNumber, PATH_PARAM_DEVICE);
         scopeGuard.require(Scope.REPORT_FISCAL_GET, "printers().dailyReports()");
         if (issuedFrom != null && issuedTo != null && issuedFrom.isAfter(issuedTo)) {
             throw new IllegalArgumentException(

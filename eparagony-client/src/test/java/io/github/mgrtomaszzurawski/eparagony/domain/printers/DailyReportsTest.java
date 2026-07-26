@@ -160,11 +160,13 @@ class DailyReportsTest {
     @Test
     @DisplayName("rejects an inverted date range before spending a request on it")
     void rejectsInvertedRange() {
+        Printers printers = printers(Scope.REPORT_FISCAL_GET);
+        FiscalDeviceUniqueNumber device = FiscalDeviceUniqueNumber.of(DEVICE);
+        Instant from = Instant.parse("2026-04-30T00:00:00Z");
+        Instant to = Instant.parse("2026-04-01T00:00:00Z");
+
         assertThrows(IllegalArgumentException.class,
-                () -> printers(Scope.REPORT_FISCAL_GET).dailyReports(
-                        FiscalDeviceUniqueNumber.of(DEVICE),
-                        Instant.parse("2026-04-30T00:00:00Z"),
-                        Instant.parse("2026-04-01T00:00:00Z")));
+                () -> printers.dailyReports(device, from, to));
 
         server.verify(0, getRequestedFor(urlPathEqualTo(REPORTS_PATH)));
     }
@@ -186,9 +188,11 @@ class DailyReportsTest {
     @Test
     @DisplayName("refuses the call when its scope was never requested")
     void refusesWithoutScope() {
+        Printers printers = printers(Scope.PRINTER_GET);
+        FiscalDeviceUniqueNumber device = FiscalDeviceUniqueNumber.of(DEVICE);
+
         EparagonyConfigurationException failure = assertThrows(EparagonyConfigurationException.class,
-                () -> printers(Scope.PRINTER_GET)
-                        .dailyReports(FiscalDeviceUniqueNumber.of(DEVICE), null, null));
+                () -> printers.dailyReports(device, null, null));
 
         assertTrue(failure.getMessage().contains(Scope.REPORT_FISCAL_GET.wireValue()));
         server.verify(0, getRequestedFor(urlPathEqualTo(REPORTS_PATH)));

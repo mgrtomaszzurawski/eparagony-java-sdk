@@ -24,6 +24,7 @@ import io.github.mgrtomaszzurawski.eparagony.core.auth.Scope;
 import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyAuthException;
 import io.github.mgrtomaszzurawski.eparagony.core.model.DocumentToken;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.Documents;
 import io.github.mgrtomaszzurawski.eparagony.core.model.PosId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,8 +81,11 @@ class AuthScopeGuardTest {
         // token, and no `scope` field at all. Every subsequent call would fail with a bare 403.
         stubTokenResponse("{\"access_token\":\"opaque\",\"token_type\":\"Bearer\",\"expires_in\":3600}");
 
+        Documents documents = client().documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
         EparagonyAuthException failure = assertThrows(EparagonyAuthException.class,
-                () -> client().documents().status(DocumentToken.of(DOCUMENT_TOKEN)));
+                () -> documents.status(token));
 
         assertTrue(failure.getMessage().contains(Scope.DOCUMENT_CREATE.wireValue()),
                 "the failure must name the missing scope, but said: " + failure.getMessage());
@@ -95,9 +99,11 @@ class AuthScopeGuardTest {
         stubTokenResponse("{\"access_token\":\"opaque\",\"token_type\":\"Bearer\","
                 + "\"expires_in\":3600,\"scope\":\"document_create\"}");
 
+        Documents documents = clientRequesting(Scope.DOCUMENT_CREATE, Scope.PRINTER_GET).documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
         EparagonyAuthException failure = assertThrows(EparagonyAuthException.class,
-                () -> clientRequesting(Scope.DOCUMENT_CREATE, Scope.PRINTER_GET)
-                        .documents().status(DocumentToken.of(DOCUMENT_TOKEN)));
+                () -> documents.status(token));
 
         assertTrue(failure.getMessage().contains(Scope.PRINTER_GET.wireValue()),
                 "the failure must name the ungranted scope, but said: " + failure.getMessage());

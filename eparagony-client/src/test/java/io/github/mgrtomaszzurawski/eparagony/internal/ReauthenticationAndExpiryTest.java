@@ -24,6 +24,7 @@ import io.github.mgrtomaszzurawski.eparagony.core.auth.ClientCredentials;
 import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyAuthException;
 import io.github.mgrtomaszzurawski.eparagony.core.model.DocumentToken;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.Documents;
 import io.github.mgrtomaszzurawski.eparagony.core.model.PosId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -106,9 +107,10 @@ class ReauthenticationAndExpiryTest {
         server.stubFor(get(urlPathEqualTo(STATUS_PATH))
                 .willReturn(aResponse().withStatus(401).withBody("{\"statusCode\":401}")));
 
-        assertThrows(EparagonyAuthException.class,
-                () -> client(Clock.fixed(START, ZoneOffset.UTC))
-                        .documents().status(DocumentToken.of(DOCUMENT_TOKEN)));
+        Documents documents = client(Clock.fixed(START, ZoneOffset.UTC)).documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
+        assertThrows(EparagonyAuthException.class, () -> documents.status(token));
 
         // Exactly one retry, so exactly two of each. A loop here is what the server throttles.
         server.verify(2, postRequestedFor(urlPathEqualTo(TOKEN_PATH)));

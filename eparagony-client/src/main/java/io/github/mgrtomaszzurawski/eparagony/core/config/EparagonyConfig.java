@@ -168,7 +168,8 @@ public final class EparagonyConfig {
          * about.
          */
         public Builder authBaseUrl(String value) {
-            this.authBaseUrl = requireSecureOrLoopback(value, "authBaseUrl");
+            requireSecureOrLoopback(value, "authBaseUrl");
+            this.authBaseUrl = value;
             return this;
         }
 
@@ -177,7 +178,8 @@ public final class EparagonyConfig {
          * the same transport rule as {@link #authBaseUrl(String)}: bearer tokens travel here.
          */
         public Builder apiBaseUrl(String value) {
-            this.apiBaseUrl = requireSecureOrLoopback(value, "apiBaseUrl");
+            requireSecureOrLoopback(value, "apiBaseUrl");
+            this.apiBaseUrl = value;
             return this;
         }
 
@@ -251,18 +253,16 @@ public final class EparagonyConfig {
          * carry secrets — the client secret to one, the bearer token to the other — so cleartext to a
          * remote host is refused outright.
          */
-        private static String requireSecureOrLoopback(String value, String name) {
+        private static void requireSecureOrLoopback(String value, String name) {
             Objects.requireNonNull(value, name);
             URI parsed = parseUrl(value, name);
             String scheme = parsed.getScheme() == null ? "" : parsed.getScheme().toLowerCase(Locale.ROOT);
-            if (SCHEME_HTTPS.equals(scheme)) {
-                return value;
+            boolean secure = SCHEME_HTTPS.equals(scheme)
+                    || SCHEME_HTTP.equals(scheme) && isLoopback(parsed.getHost());
+            if (!secure) {
+                throw new EparagonyConfigurationException(name + " must use https, or http against a "
+                        + "loopback address for testing, but was: " + value);
             }
-            if (SCHEME_HTTP.equals(scheme) && isLoopback(parsed.getHost())) {
-                return value;
-            }
-            throw new EparagonyConfigurationException(name + " must use https, or http against a "
-                    + "loopback address for testing, but was: " + value);
         }
 
         private static URI parseUrl(String value, String name) {

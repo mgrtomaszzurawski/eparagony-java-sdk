@@ -149,6 +149,15 @@ public final class RetryPolicy {
                 : Duration.ofMillis(scaled);
     }
 
+    /**
+     * Spreads the wait across {@code [base/2, base]}.
+     *
+     * <p>{@link ThreadLocalRandom} is deliberate and is <em>not</em> a security decision: this value
+     * decides how long a thread sleeps before retrying, nothing is derived from it, and nothing is
+     * protected by its unpredictability. An attacker who could predict every jitter draw would learn
+     * when a client retries — which the client's own traffic already reveals. A
+     * {@code SecureRandom} here would buy nothing and cost entropy on every retry.
+     */
     private static Duration applyEqualJitter(Duration base) {
         long half = base.toMillis() / EQUAL_JITTER_DIVISOR;
         if (half <= 0) {

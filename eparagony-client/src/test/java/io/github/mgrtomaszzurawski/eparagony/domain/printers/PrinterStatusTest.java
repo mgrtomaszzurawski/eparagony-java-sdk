@@ -157,8 +157,10 @@ class PrinterStatusTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"statusCode\":403,\"error\":\"Forbidden\",\"message\":\"Access denied\"}")));
 
-        assertThrows(EparagonyAccessDeniedException.class,
-                () -> printers().status(FiscalDeviceUniqueNumber.of(DEVICE)));
+        Printers printers = printers();
+        FiscalDeviceUniqueNumber device = FiscalDeviceUniqueNumber.of(DEVICE);
+
+        assertThrows(EparagonyAccessDeniedException.class, () -> printers.status(device));
     }
 
     private void stubStatus(String body) {

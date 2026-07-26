@@ -39,7 +39,9 @@ class AmountTest {
     void rejectsSubGroszPrecision() {
         // Rounding here would produce a document whose total silently disagrees with the source
         // system by a grosz — the kind of discrepancy nobody finds until an audit.
-        assertThrows(IllegalArgumentException.class, () -> Amount.ofZloty(new BigDecimal("10.005")));
+        BigDecimal subGrosz = new BigDecimal("10.005");
+
+        assertThrows(IllegalArgumentException.class, () -> Amount.ofZloty(subGrosz));
     }
 
     @Test

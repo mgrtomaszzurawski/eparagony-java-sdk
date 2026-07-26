@@ -25,7 +25,9 @@ import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyConfigurationException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyServerException;
 import io.github.mgrtomaszzurawski.eparagony.core.model.DocumentToken;
+import io.github.mgrtomaszzurawski.eparagony.core.model.FiscalDeviceUniqueNumber;
 import io.github.mgrtomaszzurawski.eparagony.core.model.PosId;
+import io.github.mgrtomaszzurawski.eparagony.domain.printers.Printers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,6 +52,7 @@ class AwaitAndLifecycleTest {
     private static final String TOKEN_PATH = "/auth/token";
     private static final String DOCUMENT_TOKEN = "11111111-2222-4333-8444-555555555555";
     private static final String STATUS_PATH = "/documents/" + DOCUMENT_TOKEN + "/status";
+    private static final String EMULATOR_DEVICE = "ZBN1901007833";
 
     private WireMockServer server;
 
@@ -78,9 +81,13 @@ class AwaitAndLifecycleTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"status\":\"PENDING\"}")));
 
+        Documents documents = client().documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
+        Duration timeout = Duration.ofSeconds(1);
+
         EparagonyServerException failure = assertThrows(EparagonyServerException.class,
-                () -> client().documents()
-                        .awaitTerminalStatus(DocumentToken.of(DOCUMENT_TOKEN), Duration.ofSeconds(1)));
+                () -> documents.awaitTerminalStatus(token, timeout));
 
         assertTrue(failure.getMessage().contains("PENDING"),
                 "the message must say what state it gave up on, but said: " + failure.getMessage());
@@ -102,18 +109,27 @@ class AwaitAndLifecycleTest {
         // would loop forever here — a hang being a far worse failure than a timeout.
         Clock frozen = Clock.fixed(Instant.parse("2026-07-26T00:00:00Z"), ZoneOffset.UTC);
 
+        Documents documents = clientWith(frozen).documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
+        Duration timeout = Duration.ofSeconds(2);
+
         assertThrows(EparagonyServerException.class,
-                () -> clientWith(frozen).documents()
-                        .awaitTerminalStatus(DocumentToken.of(DOCUMENT_TOKEN), Duration.ofSeconds(2)));
+                () -> documents.awaitTerminalStatus(token, timeout));
     }
 
     @Test
     @DisplayName("rejects a non-positive timeout instead of polling once and giving up")
     void rejectsNonPositiveTimeout() {
-        assertThrows(IllegalArgumentException.class, () -> client().documents()
-                .awaitTerminalStatus(DocumentToken.of(DOCUMENT_TOKEN), Duration.ZERO));
-        assertThrows(IllegalArgumentException.class, () -> client().documents()
-                .awaitTerminalStatus(DocumentToken.of(DOCUMENT_TOKEN), Duration.ofSeconds(-1)));
+        Documents documents = client().documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
+        Duration negative = Duration.ofSeconds(-1);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> documents.awaitTerminalStatus(token, Duration.ZERO));
+        assertThrows(IllegalArgumentException.class,
+                () -> documents.awaitTerminalStatus(token, negative));
     }
 
     @Test
@@ -121,8 +137,11 @@ class AwaitAndLifecycleTest {
     void refusesFacadeWithoutScope() {
         // Without this the consumer would reach the endpoint and meet an opaque 403 — the exact
         // failure the scope guard exists to eliminate one layer up.
+        Printers printers = client().printers();
+        FiscalDeviceUniqueNumber device = FiscalDeviceUniqueNumber.of(EMULATOR_DEVICE);
+
         EparagonyConfigurationException failure = assertThrows(EparagonyConfigurationException.class,
-                () -> client().printers().status(io.github.mgrtomaszzurawski.eparagony.core.model.FiscalDeviceUniqueNumber.of("ZBN1901007833")));
+                () -> printers.status(device));
 
         assertTrue(failure.getMessage().contains(Scope.PRINTER_GET.wireValue()),
                 "the message must name the missing scope, but said: " + failure.getMessage());

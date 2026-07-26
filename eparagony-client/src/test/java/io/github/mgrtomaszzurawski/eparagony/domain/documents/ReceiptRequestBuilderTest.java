@@ -58,13 +58,13 @@ class ReceiptRequestBuilderTest {
         // Goods sold by weight are where this bites: 1.5 kg at 3.33 PLN/kg is 4.995 PLN, which no
         // fiscal document can express. Rounding it silently would put a line on the receipt that does
         // not reconcile, and the server would reject the whole document with a numeric code.
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> ReceiptLine.builder()
-                        .productOrServiceName("Karma luzem")
-                        .quantity(new BigDecimal("1.5"))
-                        .unitPrice(Amount.ofGrosze(333))
-                        .taxRate(TaxRateCode.A)
-                        .build());
+        ReceiptLine.Builder line = ReceiptLine.builder()
+                .productOrServiceName("Karma luzem")
+                .quantity(new BigDecimal("1.5"))
+                .unitPrice(Amount.ofGrosze(333))
+                .taxRate(TaxRateCode.A);
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, line::build);
 
         assertTrue(failure.getMessage().contains("totalLineValue"),
                 "the message must say how to resolve it, but said: " + failure.getMessage());
@@ -87,12 +87,13 @@ class ReceiptRequestBuilderTest {
     @Test
     @DisplayName("rejects a declared gross value that disagrees with the lines")
     void rejectsMismatchedGrossValue() {
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> ReceiptRequest.builder()
-                        .addLine(line(Amount.ofGrosze(10000)))
-                        .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(10000)))
-                        .grossSaleValue(Amount.ofGrosze(9900))
-                        .build());
+        ReceiptRequest.Builder request = ReceiptRequest.builder()
+                .addLine(line(Amount.ofGrosze(10000)))
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(10000)))
+                .grossSaleValue(Amount.ofGrosze(9900));
+
+        IllegalArgumentException failure =
+                assertThrows(IllegalArgumentException.class, request::build);
 
         assertTrue(failure.getMessage().contains("99.00 PLN")
                         && failure.getMessage().contains("100.00 PLN"),
@@ -102,10 +103,11 @@ class ReceiptRequestBuilderTest {
     @Test
     @DisplayName("rejects payments that do not cover the sale")
     void rejectsUnderpayment() {
-        assertThrows(IllegalArgumentException.class, () -> ReceiptRequest.builder()
+        ReceiptRequest.Builder request = ReceiptRequest.builder()
                 .addLine(line(Amount.ofGrosze(10000)))
-                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(9000)))
-                .build());
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(9000)));
+
+        assertThrows(IllegalArgumentException.class, request::build);
     }
 
     @Test
@@ -123,19 +125,21 @@ class ReceiptRequestBuilderTest {
     @Test
     @DisplayName("rejects a receipt with no lines or no payments")
     void rejectsEmptyReceipt() {
-        assertThrows(IllegalArgumentException.class, () -> ReceiptRequest.builder()
-                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(100)))
-                .build());
-        assertThrows(IllegalArgumentException.class, () -> ReceiptRequest.builder()
-                .addLine(line(Amount.ofGrosze(100)))
-                .build());
+        ReceiptRequest.Builder withoutLines = ReceiptRequest.builder()
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(100)));
+        ReceiptRequest.Builder withoutPayments = ReceiptRequest.builder()
+                .addLine(line(Amount.ofGrosze(100)));
+
+        assertThrows(IllegalArgumentException.class, withoutLines::build);
+        assertThrows(IllegalArgumentException.class, withoutPayments::build);
     }
 
     @Test
     @DisplayName("requires every VAT slot to be declared")
     void requiresEveryTaxSlot() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new TaxRateTable(java.util.Map.of(TaxRateCode.A, "23")));
+        java.util.Map<TaxRateCode, String> incomplete = java.util.Map.of(TaxRateCode.A, "23");
+
+        assertThrows(IllegalArgumentException.class, () -> new TaxRateTable(incomplete));
     }
 
     @Test
@@ -150,12 +154,13 @@ class ReceiptRequestBuilderTest {
     @Test
     @DisplayName("rejects a non-positive quantity")
     void rejectsNonPositiveQuantity() {
-        assertThrows(IllegalArgumentException.class, () -> ReceiptLine.builder()
+        ReceiptLine.Builder line = ReceiptLine.builder()
                 .productOrServiceName("Karma")
                 .quantity(0)
                 .unitPrice(Amount.ofGrosze(100))
-                .taxRate(TaxRateCode.A)
-                .build());
+                .taxRate(TaxRateCode.A);
+
+        assertThrows(IllegalArgumentException.class, line::build);
     }
 
     private static ReceiptLine line(Amount total) {

@@ -55,11 +55,15 @@ public record ReceiptRequest(
         DutyFreeSale dutyFree,
         List<AllegroDelivery> actions) {
 
+    /** Field names used in the reconciliation failures, so the message and the builder cannot drift. */
+    private static final String FIELD_TOTAL_PAID = "totalPaid";
+    private static final String FIELD_GROSS_SALE_VALUE = "grossSaleValue";
+
     public ReceiptRequest {
         lines = List.copyOf(Objects.requireNonNull(lines, "lines"));
         payments = List.copyOf(Objects.requireNonNull(payments, "payments"));
-        Objects.requireNonNull(totalPaid, "totalPaid");
-        Objects.requireNonNull(grossSaleValue, "grossSaleValue");
+        Objects.requireNonNull(totalPaid, FIELD_TOTAL_PAID);
+        Objects.requireNonNull(grossSaleValue, FIELD_GROSS_SALE_VALUE);
         Objects.requireNonNull(taxRates, "taxRates");
         metadata = metadata == null ? ReceiptMetadata.none() : metadata;
         extensions = extensions == null ? ReceiptExtensions.none() : extensions;
@@ -140,7 +144,7 @@ public record ReceiptRequest(
 
         /** Sets the total tendered. Omit it to have the payments summed. */
         public Builder totalPaid(Amount value) {
-            this.totalPaid = Objects.requireNonNull(value, "totalPaid");
+            this.totalPaid = Objects.requireNonNull(value, FIELD_TOTAL_PAID);
             return this;
         }
 
@@ -152,7 +156,7 @@ public record ReceiptRequest(
 
         /** Sets the declared gross sale value. Omit it to have the line totals summed. */
         public Builder grossSaleValue(Amount value) {
-            this.grossSaleValue = Objects.requireNonNull(value, "grossSaleValue");
+            this.grossSaleValue = Objects.requireNonNull(value, FIELD_GROSS_SALE_VALUE);
             return this;
         }
 
@@ -274,9 +278,9 @@ public record ReceiptRequest(
             Amount effectivePaid = totalPaid != null ? totalPaid : paymentsTotal;
 
             requireEqual(effectiveGross, linesTotal,
-                    "grossSaleValue", "the sum of the line totals");
+                    FIELD_GROSS_SALE_VALUE, "the sum of the line totals");
             requireEqual(effectivePaid, paymentsTotal,
-                    "totalPaid", "the sum of the individual payments");
+                    FIELD_TOTAL_PAID, "the sum of the individual payments");
             requireCovers(effectivePaid, linesTotal);
 
             return new ReceiptRequest(lines, payments, effectivePaid, change, effectiveGross, taxRates,

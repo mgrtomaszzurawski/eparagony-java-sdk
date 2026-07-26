@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PathAndConfigTest {
 
     private static final String TEMPLATE = "/documents/{documentToken}/status";
+    private static final String PARAM_NAME = "documentToken";
 
     @Test
     @DisplayName("substitutes and encodes a path parameter")
@@ -48,12 +49,10 @@ class PathAndConfigTest {
     void rejectsTraversal() {
         // URLEncoder leaves '.' untouched, so ".." survives encoding intact and would walk the caller
         // up a path segment onto an endpoint they did not ask for.
-        assertThrows(IllegalArgumentException.class,
-                () -> PathTemplate.expand(TEMPLATE, "documentToken", ".."));
-        assertThrows(IllegalArgumentException.class,
-                () -> PathTemplate.expand(TEMPLATE, "documentToken", "."));
-        assertThrows(IllegalArgumentException.class,
-                () -> PathTemplate.expand(TEMPLATE, "documentToken", "  "));
+        for (String traversal : new String[] {"..", ".", "  "}) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> PathTemplate.expand(TEMPLATE, PARAM_NAME, traversal));
+        }
     }
 
     @Test
@@ -76,29 +75,25 @@ class PathAndConfigTest {
     @Test
     @DisplayName("rejects a generic user agent, which the API itself rejects")
     void rejectsGenericUserAgent() {
-        assertThrows(EparagonyConfigurationException.class,
-                () -> validConfig().applicationUserAgent("Java/17").build());
-        assertThrows(EparagonyConfigurationException.class,
-                () -> validConfig().applicationUserAgent("curl/8.5.0").build());
-        assertThrows(EparagonyConfigurationException.class,
-                () -> validConfig().applicationUserAgent("ok").build());
+        for (String generic : new String[] {"Java/17", "curl/8.5.0", "ok"}) {
+            EparagonyConfig.Builder builder = validConfig().applicationUserAgent(generic);
+            assertThrows(EparagonyConfigurationException.class, builder::build);
+        }
     }
 
     @Test
     @DisplayName("requires the credentials, posId and user agent up front")
     void requiresMandatoryFields() {
-        assertThrows(EparagonyConfigurationException.class, () -> EparagonyConfig.builder()
-                .posId(PosId.of("pos"))
-                .applicationUserAgent("App/1.0")
-                .build());
-        assertThrows(EparagonyConfigurationException.class, () -> EparagonyConfig.builder()
-                .credentials(new ClientCredentials("id", "secret"))
-                .applicationUserAgent("App/1.0")
-                .build());
-        assertThrows(EparagonyConfigurationException.class, () -> EparagonyConfig.builder()
-                .credentials(new ClientCredentials("id", "secret"))
-                .posId(PosId.of("pos"))
-                .build());
+        EparagonyConfig.Builder withoutCredentials = EparagonyConfig.builder()
+                .posId(PosId.of("pos")).applicationUserAgent("App/1.0");
+        EparagonyConfig.Builder withoutPosId = EparagonyConfig.builder()
+                .credentials(new ClientCredentials("id", "secret")).applicationUserAgent("App/1.0");
+        EparagonyConfig.Builder withoutUserAgent = EparagonyConfig.builder()
+                .credentials(new ClientCredentials("id", "secret")).posId(PosId.of("pos"));
+
+        assertThrows(EparagonyConfigurationException.class, withoutCredentials::build);
+        assertThrows(EparagonyConfigurationException.class, withoutPosId::build);
+        assertThrows(EparagonyConfigurationException.class, withoutUserAgent::build);
     }
 
     @Test

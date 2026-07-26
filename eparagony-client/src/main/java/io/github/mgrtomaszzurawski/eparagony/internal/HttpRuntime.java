@@ -162,9 +162,10 @@ public final class HttpRuntime {
             if (isSuccess(status)) {
                 return decoder.apply(new RawResponse(status, response.body()));
             }
-            // One re-authentication, once. A token can expire between the cache check and the call;
-            // beyond a single retry a 401 means the credential itself is wrong, and hammering the
-            // token endpoint is precisely what the server throttles.
+            // Re-authenticate once and only once. A token can expire in the moment between the cache
+            // check and the call reaching the server, which one retry fixes. Anything beyond that
+            // means the credential itself is wrong, and repeatedly asking for a new token is exactly
+            // the behaviour the authorization server throttles.
             if (status == HTTP_UNAUTHORIZED && !reauthenticated) {
                 reauthenticated = true;
                 // Compare-and-clear against the token this attempt actually used, so a concurrent

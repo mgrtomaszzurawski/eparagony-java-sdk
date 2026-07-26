@@ -52,7 +52,28 @@ its remediation implies — not merely that something was thrown.
 ./gradlew test                        # unit + contract; e2e excluded by tag
 ./gradlew check                       # the above plus Spotless, Checkstyle, PMD, SpotBugs, JaCoCo
 ./gradlew :eparagony-client:e2eTest   # live sandbox
+./gradlew sonar --no-configuration-cache \
+    -Dsonar.host.url=$SONAR_HOST_URL \
+    -Dsonar.login=$SONAR_LOGIN -Dsonar.password=$SONAR_PASSWORD
 ```
+
+`sonar` must run **after** `jacocoTestReport`, or the analysis reports zero coverage. `check`
+produces that report, so running `check` then `sonar` is the correct order.
+
+### Last recorded gate run
+
+| Gate | Result |
+|---|---|
+| Spotless / Checkstyle / PMD / SpotBugs | 0 violations |
+| JUnit (unit + contract) | 497 tests, 0 skipped, 0 failures |
+| JaCoCo | instruction 83%, line 84%, class 100% |
+| Live sandbox `e2eTest` | 3 tests, **0 skipped**, 0 failures |
+| SonarQube | 0 bugs, 0 vulnerabilities, 0 hotspots, 0 open smells, A/A/A |
+
+Two Sonar findings carry a recorded decision rather than a fix, and both are visible on the board with
+their justification: the retry loop's multiple `continue` statements (marked won't-fix — collapsing
+them needs flag variables that hide which outcome occurred), and the jitter RNG (reviewed as safe —
+nothing is derived from that value and nothing is protected by its unpredictability).
 
 `e2eTest` reads `EPARAGONY_CLIENT_ID`, `EPARAGONY_CLIENT_SECRET` and `EPARAGONY_POS_ID` from the
 environment and **self-skips when they are absent**. A skip is not a pass: check the report for

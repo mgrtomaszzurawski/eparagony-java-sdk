@@ -52,7 +52,8 @@ public final class DocumentsImpl implements Documents {
     private static final String PATH_PARAM_DOCUMENT_TOKEN = "documentToken";
 
     private static final String FIELD_TRANSACTION_TOKEN = "transactionToken";
-    private static final String FIELD_DOCUMENT_TOKEN = "documentToken";
+    /** Doubles as the response field name; the wire uses one word for both. */
+    private static final String FIELD_DOCUMENT_TOKEN = PATH_PARAM_DOCUMENT_TOKEN;
     private static final String FIELD_DOCUMENT_PUBLIC_URL = "documentPublicUrl";
     private static final String FIELD_DOCUMENT_STATUS_URL = "documentStatusUrl";
     private static final String FIELD_ACTIONS = "actions";
@@ -99,7 +100,7 @@ public final class DocumentsImpl implements Documents {
 
     @Override
     public DocumentStatus status(DocumentToken documentToken) {
-        Objects.requireNonNull(documentToken, "documentToken");
+        Objects.requireNonNull(documentToken, PATH_PARAM_DOCUMENT_TOKEN);
         scopeGuard.require(Scope.DOCUMENT_CREATE, "documents().status()");
         String path = PathTemplate.expand(
                 ApiPaths.DOCUMENT_STATUS, PATH_PARAM_DOCUMENT_TOKEN, documentToken.value());
@@ -108,7 +109,7 @@ public final class DocumentsImpl implements Documents {
 
     @Override
     public DocumentStatus awaitTerminalStatus(DocumentToken documentToken, Duration timeout) {
-        Objects.requireNonNull(documentToken, "documentToken");
+        Objects.requireNonNull(documentToken, PATH_PARAM_DOCUMENT_TOKEN);
         Objects.requireNonNull(timeout, "timeout");
         if (timeout.isNegative() || timeout.isZero()) {
             throw new IllegalArgumentException("timeout must be positive but was " + timeout);
@@ -141,7 +142,7 @@ public final class DocumentsImpl implements Documents {
 
     @Override
     public List<DocumentAction> actions(DocumentToken documentToken) {
-        Objects.requireNonNull(documentToken, "documentToken");
+        Objects.requireNonNull(documentToken, PATH_PARAM_DOCUMENT_TOKEN);
         scopeGuard.require(Scope.DOCUMENT_ACTION_GET, "documents().actions()");
         String path = PathTemplate.expand(
                 ApiPaths.DOCUMENT_ACTIONS_STATUS, PATH_PARAM_DOCUMENT_TOKEN, documentToken.value());
@@ -165,7 +166,7 @@ public final class DocumentsImpl implements Documents {
 
     @Override
     public SignedDocument signedDocument(DocumentToken documentToken) {
-        Objects.requireNonNull(documentToken, "documentToken");
+        Objects.requireNonNull(documentToken, PATH_PARAM_DOCUMENT_TOKEN);
         scopeGuard.require(Scope.DOCUMENT_GET_JWS, "documents().signedDocument()");
         String path = PathTemplate.expand(
                 ApiPaths.DOCUMENT_JWS, PATH_PARAM_DOCUMENT_TOKEN, documentToken.value());

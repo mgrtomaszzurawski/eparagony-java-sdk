@@ -137,8 +137,10 @@ class ActionsAndSignedDocumentTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"statusCode\":404,\"error\":\"Not Found\"}")));
 
-        assertThrows(EparagonyNotFoundException.class,
-                () -> documents().actions(DocumentToken.of(DOCUMENT_TOKEN)));
+        Documents documents = documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
+        assertThrows(EparagonyNotFoundException.class, () -> documents.actions(token));
     }
 
     @Test
@@ -157,9 +159,11 @@ class ActionsAndSignedDocumentTest {
     @Test
     @DisplayName("refuses the actions call when its scope was never requested")
     void refusesActionsWithoutScope() {
+        Documents documents = clientWith(Scope.DOCUMENT_CREATE).documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
         EparagonyConfigurationException failure = assertThrows(EparagonyConfigurationException.class,
-                () -> clientWith(Scope.DOCUMENT_CREATE).documents()
-                        .actions(DocumentToken.of(DOCUMENT_TOKEN)));
+                () -> documents.actions(token));
 
         assertTrue(failure.getMessage().contains(Scope.DOCUMENT_ACTION_GET.wireValue()),
                 "the message must name the missing scope, but said: " + failure.getMessage());
@@ -170,9 +174,11 @@ class ActionsAndSignedDocumentTest {
     @Test
     @DisplayName("refuses the JWS call when its scope was never requested")
     void refusesJwsWithoutScope() {
+        Documents documents = clientWith(Scope.DOCUMENT_CREATE).documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
         EparagonyConfigurationException failure = assertThrows(EparagonyConfigurationException.class,
-                () -> clientWith(Scope.DOCUMENT_CREATE).documents()
-                        .signedDocument(DocumentToken.of(DOCUMENT_TOKEN)));
+                () -> documents.signedDocument(token));
 
         assertTrue(failure.getMessage().contains(Scope.DOCUMENT_GET_JWS.wireValue()));
         server.verify(0, getRequestedFor(urlPathEqualTo(JWS_PATH)));

@@ -36,6 +36,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.StringJoiner;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Acquires and caches the access token. Internal: never exported.
@@ -80,7 +81,15 @@ public final class TokenManager {
     private final TokenResponseReader reader;
     private final Object acquisitionLock = new Object();
 
-    private volatile AccessToken cachedToken;
+    /**
+     * The cached token.
+     *
+     * <p>An {@link AtomicReference}, not a {@code volatile} field. {@code volatile} would publish the
+     * reference safely enough — {@link AccessToken} is immutable — but it cannot express the operation
+     * {@link #invalidate(AccessToken)} actually needs, which is "clear this only if it is still the
+     * token that was rejected". Written by hand under the lock that was a lock doing an atomic's job.
+     */
+    private final AtomicReference<AccessToken> cachedToken = new AtomicReference<>();
 
     public TokenManager(HttpClient httpClient, EparagonyConfig config, String userAgent, JsonCodec codec,
             Clock clock) {
@@ -95,22 +104,22 @@ public final class TokenManager {
      * The current token, minting one if there is none or the cached one is about to expire.
      *
      * <p>Returns the token <em>by value</em>. Re-reading the field after acquisition would race with a
-     * concurrent {@link #invalidate()} and hand the caller a null bearer.
+     * concurrent {@link #invalidate(AccessToken)} and hand the caller a null bearer.
      */
     public AccessToken currentToken() {
-        AccessToken existing = cachedToken;
+        AccessToken existing = cachedToken.get();
         Instant currentInstant = clock.instant();
         if (existing != null && !existing.isExpiredAt(currentInstant)) {
             return existing;
         }
         synchronized (acquisitionLock) {
             // Re-check inside the lock: another thread may have minted one while this one waited.
-            AccessToken current = cachedToken;
+            AccessToken current = cachedToken.get();
             if (current != null && !current.isExpiredAt(clock.instant())) {
                 return current;
             }
             AccessToken fresh = requestToken();
-            cachedToken = fresh;
+            cachedToken.set(fresh);
             return fresh;
         }
     }
@@ -128,11 +137,7 @@ public final class TokenManager {
      * @param staleToken the token that was rejected; ignored if the cache has already moved on
      */
     public void invalidate(AccessToken staleToken) {
-        synchronized (acquisitionLock) {
-            if (cachedToken == null || cachedToken.equals(staleToken)) {
-                cachedToken = null;
-            }
-        }
+        cachedToken.compareAndSet(staleToken, null);
     }
 
     private AccessToken requestToken() {

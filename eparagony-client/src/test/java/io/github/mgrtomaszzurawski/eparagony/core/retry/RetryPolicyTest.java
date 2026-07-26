@@ -148,12 +148,13 @@ class RetryPolicyTest {
     @Test
     @DisplayName("rejects a nonsensical configuration at build time")
     void rejectsBadConfiguration() {
-        assertThrows(RuntimeException.class, () -> RetryPolicy.builder().maxAttempts(0).build());
-        assertThrows(RuntimeException.class,
-                () -> RetryPolicy.builder().initialBackoff(Duration.ZERO).build());
-        assertThrows(RuntimeException.class, () -> RetryPolicy.builder()
-                .initialBackoff(Duration.ofSeconds(10))
-                .maxBackoff(Duration.ofSeconds(1))
-                .build());
+        RetryPolicy.Builder zeroAttempts = RetryPolicy.builder();
+        RetryPolicy.Builder zeroBackoff = RetryPolicy.builder();
+        RetryPolicy.Builder invertedBounds = RetryPolicy.builder();
+
+        assertThrows(RuntimeException.class, () -> zeroAttempts.maxAttempts(0));
+        assertThrows(RuntimeException.class, () -> zeroBackoff.initialBackoff(Duration.ZERO));
+        invertedBounds.initialBackoff(Duration.ofSeconds(10)).maxBackoff(Duration.ofSeconds(1));
+        assertThrows(RuntimeException.class, invertedBounds::build);
     }
 }

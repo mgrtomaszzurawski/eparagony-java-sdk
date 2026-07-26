@@ -35,6 +35,9 @@ class WebhookVerifierTest {
     private static final String SECRET_VALUE = "test-webhook-secret-value";
     private static final String HMAC_ALGORITHM = "HmacSHA256";
 
+    /** HMAC-SHA256 is 32 bytes, so a well-formed signature is exactly this many hex characters. */
+    private static final int SIGNATURE_HEX_LENGTH = 64;
+
     /** HMAC-SHA256 of the ASCII bytes "eparagony" under the key "key", hex-encoded. */
     private static final String KNOWN_ANSWER_SIGNATURE =
             "b6627987af0233976e7bdaf0e02617a5e2f2edb8d1f886213dd782d660dab91e";
@@ -77,8 +80,8 @@ class WebhookVerifierTest {
         // What a handler that parsed and re-serialized the JSON would hand the verifier instead.
         byte[] reserialized = REORDERED_BODY.getBytes(StandardCharsets.UTF_8);
 
-        WebhookSignatureException failure =
-                assertThrows(WebhookSignatureException.class, () -> verifier.verify(reserialized, signature));
+        WebhookSignatureException failure = assertThrows(WebhookSignatureException.class,
+                () -> verifier.verify(reserialized, signature));
         assertTrue(failure.getMessage().contains("RAW bytes"),
                 "the failure must point at the re-serialization trap, but said: " + failure.getMessage());
     }
@@ -111,8 +114,9 @@ class WebhookVerifierTest {
         assertThrows(WebhookSignatureException.class, () -> verifier.verify(body, null));
         assertThrows(WebhookSignatureException.class, () -> verifier.verify(body, "  "));
         assertThrows(WebhookSignatureException.class, () -> verifier.verify(body, "abc123"));
+        String nonHexOfCorrectLength = "z".repeat(SIGNATURE_HEX_LENGTH);
         assertThrows(WebhookSignatureException.class,
-                () -> verifier.verify(body, "z".repeat(64)));
+                () -> verifier.verify(body, nonHexOfCorrectLength));
     }
 
     @Test

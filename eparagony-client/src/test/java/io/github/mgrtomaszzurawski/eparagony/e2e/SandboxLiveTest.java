@@ -26,6 +26,7 @@ import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
 import io.github.mgrtomaszzurawski.eparagony.core.model.DocumentToken;
 import io.github.mgrtomaszzurawski.eparagony.core.model.FiscalDeviceUniqueNumber;
 import io.github.mgrtomaszzurawski.eparagony.core.model.PosId;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.Documents;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentState;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentStatus;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.IssuedDocument;
@@ -134,8 +135,11 @@ class SandboxLiveTest {
         // it outright when scopes are space-separated — which is the whole point of sending them that
         // way rather than comma-separated as the specification says.
         try (EparagonyClient client = client(Scope.DOCUMENT_CREATE, Scope.DOCUMENT_ACTION_GET)) {
+            Documents documents = client.documents();
+            DocumentToken token = DocumentToken.random();
+
             EparagonyAuthException failure = assertThrows(EparagonyAuthException.class,
-                    () -> client.documents().status(DocumentToken.random()));
+                    () -> documents.status(token));
 
             assertTrue(failure.getMessage().contains("document_action_get"),
                     "the failure must name the offending scope, but said: " + failure.getMessage());

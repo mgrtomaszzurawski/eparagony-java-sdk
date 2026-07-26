@@ -54,28 +54,33 @@ public final class DocumentStatus {
     private final String documentUrl;
     private final String errorMessage;
 
-    /** Assembled by the SDK from a server payload; consumers receive one, they do not build one. */
-    @SuppressWarnings("checkstyle:ParameterNumber")
-    public DocumentStatus(DocumentState state, DocumentToken documentToken,
-            TransactionToken transactionToken, String documentType, String processingMode,
-            FiscalDeviceUniqueNumber fiscalDeviceUniqueNumber, String fiscalDocumentId,
-            Integer fiscalDocumentNumber, Integer receiptNumber, Boolean printed, Instant endTime,
-            String orderId, String merchantDocumentId, String documentUrl, String errorMessage) {
-        this.state = Objects.requireNonNull(state, "state");
-        this.documentToken = documentToken;
-        this.transactionToken = transactionToken;
-        this.documentType = documentType;
-        this.processingMode = processingMode;
-        this.fiscalDeviceUniqueNumber = fiscalDeviceUniqueNumber;
-        this.fiscalDocumentId = fiscalDocumentId;
-        this.fiscalDocumentNumber = fiscalDocumentNumber;
-        this.receiptNumber = receiptNumber;
-        this.printed = printed;
-        this.endTime = endTime;
-        this.orderId = orderId;
-        this.merchantDocumentId = merchantDocumentId;
-        this.documentUrl = documentUrl;
-        this.errorMessage = errorMessage;
+    private DocumentStatus(Builder builder) {
+        this.state = Objects.requireNonNull(builder.state, "state");
+        this.documentToken = builder.documentToken;
+        this.transactionToken = builder.transactionToken;
+        this.documentType = builder.documentType;
+        this.processingMode = builder.processingMode;
+        this.fiscalDeviceUniqueNumber = builder.fiscalDeviceUniqueNumber;
+        this.fiscalDocumentId = builder.fiscalDocumentId;
+        this.fiscalDocumentNumber = builder.fiscalDocumentNumber;
+        this.receiptNumber = builder.receiptNumber;
+        this.printed = builder.printed;
+        this.endTime = builder.endTime;
+        this.orderId = builder.orderId;
+        this.merchantDocumentId = builder.merchantDocumentId;
+        this.documentUrl = builder.documentUrl;
+        this.errorMessage = builder.errorMessage;
+    }
+
+    /**
+     * Starts a status. Assembled by the SDK from a server payload; consumers receive one rather than
+     * building one, but the type is public because a consumer's own tests may want to fabricate one.
+     *
+     * <p>A builder rather than a fifteen-argument constructor: fourteen of the fifteen are optional
+     * and most are the same type, so a positional call is a transposition waiting to happen.
+     */
+    public static Builder builder(DocumentState state) {
+        return new Builder(state);
     }
 
     /** Where the document has got to. Never null. */
@@ -155,6 +160,104 @@ public final class DocumentStatus {
     /** The failure detail, when {@link #state()} is {@link DocumentState#ERROR}. */
     public Optional<String> errorMessage() {
         return Optional.ofNullable(errorMessage);
+    }
+
+    /** Builder for {@link DocumentStatus}. */
+    public static final class Builder {
+
+        private final DocumentState state;
+        private DocumentToken documentToken;
+        private TransactionToken transactionToken;
+        private String documentType;
+        private String processingMode;
+        private FiscalDeviceUniqueNumber fiscalDeviceUniqueNumber;
+        private String fiscalDocumentId;
+        private Integer fiscalDocumentNumber;
+        private Integer receiptNumber;
+        private Boolean printed;
+        private Instant endTime;
+        private String orderId;
+        private String merchantDocumentId;
+        private String documentUrl;
+        private String errorMessage;
+
+        private Builder(DocumentState state) {
+            this.state = Objects.requireNonNull(state, "state");
+        }
+
+        public Builder documentToken(DocumentToken value) {
+            this.documentToken = value;
+            return this;
+        }
+
+        public Builder transactionToken(TransactionToken value) {
+            this.transactionToken = value;
+            return this;
+        }
+
+        public Builder documentType(String value) {
+            this.documentType = value;
+            return this;
+        }
+
+        public Builder processingMode(String value) {
+            this.processingMode = value;
+            return this;
+        }
+
+        public Builder fiscalDeviceUniqueNumber(FiscalDeviceUniqueNumber value) {
+            this.fiscalDeviceUniqueNumber = value;
+            return this;
+        }
+
+        public Builder fiscalDocumentId(String value) {
+            this.fiscalDocumentId = value;
+            return this;
+        }
+
+        public Builder fiscalDocumentNumber(Integer value) {
+            this.fiscalDocumentNumber = value;
+            return this;
+        }
+
+        public Builder receiptNumber(Integer value) {
+            this.receiptNumber = value;
+            return this;
+        }
+
+        public Builder printed(Boolean value) {
+            this.printed = value;
+            return this;
+        }
+
+        public Builder endTime(Instant value) {
+            this.endTime = value;
+            return this;
+        }
+
+        public Builder orderId(String value) {
+            this.orderId = value;
+            return this;
+        }
+
+        public Builder merchantDocumentId(String value) {
+            this.merchantDocumentId = value;
+            return this;
+        }
+
+        public Builder documentUrl(String value) {
+            this.documentUrl = value;
+            return this;
+        }
+
+        public Builder errorMessage(String value) {
+            this.errorMessage = value;
+            return this;
+        }
+
+        public DocumentStatus build() {
+            return new DocumentStatus(this);
+        }
     }
 
     @Override

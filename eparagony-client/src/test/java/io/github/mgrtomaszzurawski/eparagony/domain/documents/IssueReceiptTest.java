@@ -196,8 +196,11 @@ class IssueReceiptTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"error\":\"Bad Request\",\"statusCode\":400,\"errorCode\":120}")));
 
+        Documents documents = client().documents();
+        ReceiptRequest request = receipt();
+
         EparagonyValidationException failure = assertThrows(EparagonyValidationException.class,
-                () -> client().documents().issue(receipt()));
+                () -> documents.issue(request));
 
         assertEquals(120, failure.errorCode().orElseThrow());
     }
@@ -208,8 +211,11 @@ class IssueReceiptTest {
         server.stubFor(post(urlPathEqualTo(DOCUMENTS_PATH))
                 .willReturn(aResponse().withStatus(500).withBody("{\"statusCode\":500}")));
 
+        Documents documents = client().documents();
+        ReceiptRequest request = receipt();
+
         EparagonyServerException failure = assertThrows(EparagonyServerException.class,
-                () -> client().documents().issue(receipt()));
+                () -> documents.issue(request));
 
         // The caller must not blindly reissue: the sale may already be fiscalized.
         assertTrue(failure.requestMayHaveBeenApplied());
@@ -221,7 +227,10 @@ class IssueReceiptTest {
         server.stubFor(post(urlPathEqualTo(DOCUMENTS_PATH))
                 .willReturn(aResponse().withStatus(500).withBody("{\"statusCode\":500}")));
 
-        assertThrows(EparagonyServerException.class, () -> client().documents().issue(receipt()));
+        Documents documents = client().documents();
+        ReceiptRequest request = receipt();
+
+        assertThrows(EparagonyServerException.class, () -> documents.issue(request));
 
         // One attempt, not three: reissuing a receipt is not safe without the caller's consent.
         server.verify(1, postRequestedFor(urlPathEqualTo(DOCUMENTS_PATH)));
@@ -233,15 +242,17 @@ class IssueReceiptTest {
         server.stubFor(post(urlPathEqualTo(DOCUMENTS_PATH))
                 .willReturn(aResponse().withStatus(500).withBody("{\"statusCode\":500}")));
 
-        assertThrows(EparagonyServerException.class,
-                () -> retryingClient().documents().issue(receipt()));
+        Documents documents = retryingClient().documents();
+        ReceiptRequest request = receipt();
+
+        assertThrows(EparagonyServerException.class, () -> documents.issue(request));
 
         // This is what makes opting into write retries safe at all: the server sees one repeated
         // request, not three distinct ones, so the sale is fiscalized at most once.
         var requests = server.findAll(postRequestedFor(urlPathEqualTo(DOCUMENTS_PATH)));
         assertEquals(3, requests.size(), "the retry policy asked for three attempts");
         assertEquals(1, requests.stream()
-                        .map(request -> request.getHeader("Idempotency-Key"))
+                        .map(sent -> sent.getHeader("Idempotency-Key"))
                         .distinct().count(),
                 "all attempts of one call must carry the same Idempotency-Key");
     }
@@ -302,7 +313,10 @@ class IssueReceiptTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody(body)));
 
-        assertThrows(expected, () -> client().documents().issue(receipt()));
+        Documents documents = client().documents();
+        ReceiptRequest request = receipt();
+
+        assertThrows(expected, () -> documents.issue(request));
     }
 
     private void stubCreate(int statusCode) {
