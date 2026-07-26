@@ -30,7 +30,13 @@ public final class JsonCodec {
                 // Generated Layer-1 models express `nullable: true` as JsonNullable<T>; without this
                 // module they serialize as a wrapper object and deserialize not at all.
                 .registerModule(new JsonNullableModule())
-                .setSerializationInclusion(JsonInclude.Include.NON_NULL)
+                // NON_EMPTY, not NON_NULL. The generated Layer-1 models initialize every optional
+                // collection to an empty list, so NON_NULL would put `"actions": []`,
+                // `"rebatesMarkups": []` and four more onto the wire for a receipt that has none of
+                // them — asserting things the caller never said. NON_EMPTY leaves numbers and
+                // booleans alone (that is NON_DEFAULT's job), so `"print": false` and
+                // `"unitPrice": 0` still serialize.
+                .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 

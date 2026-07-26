@@ -7,6 +7,7 @@ import io.github.mgrtomaszzurawski.eparagony.core.model.PosId;
 import io.github.mgrtomaszzurawski.eparagony.core.retry.RetryPolicy;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -48,7 +49,11 @@ public final class EparagonyConfig {
                 builder.apiBaseUrl != null ? builder.apiBaseUrl : builder.environment.apiBaseUrl());
         this.credentials = builder.credentials;
         this.posId = builder.posId;
-        this.scopes = Set.copyOf(builder.scopes);
+        // An EnumSet, not Set.copyOf: the latter randomizes iteration order per JVM run, which would
+        // make the `scope` parameter of the token request differ between runs of the same program.
+        // The server accepts any order, but a request body that is not reproducible is a poor thing to
+        // debug, log, or pin a test against.
+        this.scopes = Collections.unmodifiableSet(EnumSet.copyOf(builder.scopes));
         this.applicationUserAgent = builder.applicationUserAgent;
         this.integrationId = builder.integrationId;
         this.requestTimeout = builder.requestTimeout;
