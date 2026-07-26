@@ -78,6 +78,9 @@
         <exclude name="TooManyMethods"/>
         <exclude name="TooManyFields"/>
         <exclude name="ExcessiveParameterList"/>
+        <!-- An address is five mandatory strings and the API says so. A "container object" for them
+             would be an address, which is the class this rule fires on. -->
+        <exclude name="UseObjectForClearerAPI"/>
         <exclude name="DataClass"/>
         <exclude name="LoosePackageCoupling"/>
         <!-- A mapper that carries 126 spec leaves onto the wire necessarily names many generated
@@ -140,7 +143,7 @@
                              or @Name='A' or @Name='B' or @Name='C' or @Name='D'
                              or @Name='E' or @Name='F' or @Name='G'
                              or @Name='tax' or @Name='JWS' or @Name='key' or @Name='plu'
-                             or @Name='cn' or @Name='DAY']"/>
+                             or @Name='cn' or @Name='DAY' or @Name='tin']"/>
         </properties>
     </rule>
 </ruleset>
