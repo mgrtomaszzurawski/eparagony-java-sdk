@@ -1,3 +1,19 @@
+/*
+ * eparagony-java-sdk — a typed Java client for the eparagony.pl Documents REST API.
+ * Copyright (C) 2026 Tomasz Zurawski
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU Affero General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option) any
+ * later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+ * PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along
+ * with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 package io.github.mgrtomaszzurawski.eparagony.core.auth;
 
 import java.time.Duration;
@@ -31,8 +47,8 @@ public record AccessToken(String value, String tokenType, Set<Scope> grantedScop
     }
 
     /** {@code true} once the token is within {@link #EXPIRY_MARGIN} of expiring, or already past it. */
-    public boolean isExpiredAt(Instant now) {
-        return !now.plus(EXPIRY_MARGIN).isBefore(expiresAt);
+    public boolean isExpiredAt(Instant currentInstant) {
+        return !currentInstant.plus(EXPIRY_MARGIN).isBefore(expiresAt);
     }
 
     /** {@code true} when the server confirmed every one of the given scopes. */

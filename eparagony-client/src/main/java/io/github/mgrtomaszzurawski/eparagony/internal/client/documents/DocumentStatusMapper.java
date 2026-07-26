@@ -1,3 +1,19 @@
+/*
+ * eparagony-java-sdk — a typed Java client for the eparagony.pl Documents REST API.
+ * Copyright (C) 2026 Tomasz Zurawski
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU Affero General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option) any
+ * later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+ * PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along
+ * with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 package io.github.mgrtomaszzurawski.eparagony.internal.client.documents;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -46,6 +62,13 @@ final class DocumentStatusMapper {
     }
 
     static DocumentStatus fromJson(JsonNode root) {
+        // Kept as a local rather than extracted to a helper: a method declared to return `Boolean`
+        // that can hand back null is an auto-unboxing NPE waiting for its first caller. The tri-state
+        // is genuinely needed here — the server not saying whether paper was produced is not the same
+        // as saying it was not — so the nullability stays visible at the one place it exists.
+        JsonNode printedNode = root.get(FIELD_PRINTED);
+        Boolean printed = printedNode != null && printedNode.isBoolean() ? printedNode.asBoolean() : null;
+
         return new DocumentStatus(
                 DocumentState.fromWireValue(text(root, FIELD_STATUS)),
                 documentToken(root),
@@ -56,7 +79,7 @@ final class DocumentStatusMapper {
                 text(root, FIELD_FISCAL_DOCUMENT_ID),
                 integer(root, FIELD_FISCAL_DOCUMENT_NUMBER),
                 integer(root, FIELD_RECEIPT_NUMBER),
-                bool(root, FIELD_PRINTED),
+                printed,
                 instant(root),
                 text(root, FIELD_ORDER_ID),
                 text(root, FIELD_MERCHANT_DOCUMENT_ID),
@@ -107,8 +130,4 @@ final class DocumentStatusMapper {
         return node != null && node.isNumber() ? node.asInt() : null;
     }
 
-    private static Boolean bool(JsonNode root, String field) {
-        JsonNode node = root.get(field);
-        return node != null && node.isBoolean() ? node.asBoolean() : null;
-    }
 }

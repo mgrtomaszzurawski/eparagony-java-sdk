@@ -1,3 +1,19 @@
+/*
+ * eparagony-java-sdk — a typed Java client for the eparagony.pl Documents REST API.
+ * Copyright (C) 2026 Tomasz Zurawski
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU Affero General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option) any
+ * later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+ * PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along
+ * with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 package io.github.mgrtomaszzurawski.eparagony.core.webhook;
 
 import javax.crypto.Mac;
@@ -58,7 +74,7 @@ public final class WebhookVerifier {
         try {
             presentedDigest = HexFormat.of().parseHex(presented.toLowerCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException notHex) {
-            throw new WebhookSignatureException("X-Signature is not valid hexadecimal");
+            throw new WebhookSignatureException("X-Signature is not valid hexadecimal", notHex);
         }
         byte[] expectedDigest = digest(rawBody);
         // Constant-time comparison: a byte-by-byte early exit leaks, through timing, how much of a
@@ -82,9 +98,9 @@ public final class WebhookVerifier {
 
     private byte[] digest(byte[] rawBody) {
         try {
-            Mac mac = Mac.getInstance(HMAC_ALGORITHM);
-            mac.init(new SecretKeySpec(secretKey, HMAC_ALGORITHM));
-            return mac.doFinal(rawBody);
+            Mac hmac = Mac.getInstance(HMAC_ALGORITHM);
+            hmac.init(new SecretKeySpec(secretKey, HMAC_ALGORITHM));
+            return hmac.doFinal(rawBody);
         } catch (GeneralSecurityException unavailable) {
             // HmacSHA256 is mandated by the JDK; reaching this means a broken security provider.
             throw new IllegalStateException("HMAC-SHA256 is unavailable in this JVM", unavailable);

@@ -1,3 +1,19 @@
+/*
+ * eparagony-java-sdk — a typed Java client for the eparagony.pl Documents REST API.
+ * Copyright (C) 2026 Tomasz Zurawski
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU Affero General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option) any
+ * later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+ * PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along
+ * with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 package io.github.mgrtomaszzurawski.eparagony.internal;
 
 import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
@@ -127,20 +143,12 @@ public final class HttpRuntime {
 
         while (true) {
             attempt++;
-            HttpRequest request = authorize(requestFactory.get(), idempotencyKey);
-            HttpResponse<String> response;
-            try {
-                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            } catch (IOException failure) {
-                if (attempt < retryPolicy.maxAttempts() && retryPolicy.isRetryableTransportFailure(idempotent)) {
-                    sleepBackoff(retryPolicy, retryIndex++, null);
-                    continue;
-                }
-                throw new EparagonyServerException("Request to " + path + " failed", failure, !idempotent);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new EparagonyServerException("Request to " + path + " was interrupted", interrupted,
-                        !idempotent);
+            boolean mayRetry = attempt < retryPolicy.maxAttempts();
+            HttpResponse<String> response =
+                    sendOrRetry(requestFactory.get(), idempotencyKey, path, idempotent, mayRetry, retryIndex);
+            if (response == null) {
+                retryIndex++;
+                continue;
             }
 
             int status = response.statusCode();
@@ -155,11 +163,35 @@ public final class HttpRuntime {
                 tokenManager.invalidate();
                 continue;
             }
-            if (attempt < retryPolicy.maxAttempts() && retryPolicy.isRetryableStatus(status, idempotent)) {
+            if (mayRetry && retryPolicy.isRetryableStatus(status, idempotent)) {
                 sleepBackoff(retryPolicy, retryIndex++, retryAfterFloor(response));
                 continue;
             }
             throw errorMapper.toException(status, response.body(), path, idempotent);
+        }
+    }
+
+    /**
+     * Sends one attempt. Returns the response, or {@code null} to mean "a retryable transport failure
+     * happened and the backoff has already been served" — which keeps the retry bookkeeping out of
+     * the caller's exception handling.
+     */
+    private HttpResponse<String> sendOrRetry(HttpRequest unauthorized, IdempotencyKey idempotencyKey,
+            String path, boolean idempotent, boolean mayRetry, int retryIndex) {
+        RetryPolicy retryPolicy = config.retryPolicy();
+        try {
+            return httpClient.send(authorize(unauthorized, idempotencyKey),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (IOException failure) {
+            if (mayRetry && retryPolicy.isRetryableTransportFailure(idempotent)) {
+                sleepBackoff(retryPolicy, retryIndex, null);
+                return null;
+            }
+            throw new EparagonyServerException("Request to " + path + " failed", failure, !idempotent);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new EparagonyServerException("Request to " + path + " was interrupted", interrupted,
+                    !idempotent);
         }
     }
 

@@ -1,0 +1,135 @@
+<?xml version="1.0"?>
+<ruleset name="eparagony-sdk"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0
+                             https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>
+        Static rules for the hand-written SDK. Carries the project's own naming and
+        magic-value standards (see CLAUDE.md) plus the bug-prone patterns worth failing a build
+        over. Generated Layer 1 and module-info are excluded at the Gradle level: PMD 7 cannot
+        parse `requires static transitive`, and regenerated sources are not ours to lint.
+    </description>
+
+    <rule ref="category/java/bestpractices.xml">
+        <!-- The SDK targets Java 17 and uses records, sealed types and switch expressions; several
+             of these rules predate them and fire on idiomatic modern code. -->
+        <exclude name="GuardLogStatement"/>
+        <!-- Assertion style is governed by TESTING.md, which asks for meaningful messages rather
+             than a fixed count of assertions per test. -->
+        <exclude name="JUnitTestContainsTooManyAsserts"/>
+        <exclude name="JUnitAssertionsShouldIncludeMessage"/>
+        <exclude name="UnitTestContainsTooManyAsserts"/>
+        <exclude name="UnitTestAssertionsShouldIncludeMessage"/>
+        <exclude name="UnitTestShouldUseTestAnnotation"/>
+        <!-- EnumMap is declared concretely on purpose: its ordinal iteration order is what keeps the
+             rendered tax-rate table and the requested scope list reproducible between runs. -->
+        <exclude name="LooseCoupling"/>
+        <!-- PMD 7 does not model the record compact constructor: an assignment to the component
+             parameter there IS the field initialization, and PMD reads it as dead. That the copy is
+             live is proven by TaxRateTableImmutabilityTest. -->
+        <exclude name="UnusedAssignment"/>
+    </rule>
+
+    <rule ref="category/java/errorprone.xml">
+        <!-- Null checks are the SDK's contract enforcement; this rule objects to the pattern itself. -->
+        <exclude name="AvoidLiteralsInIfCondition"/>
+        <!-- The project deliberately names types after the specification's vocabulary even where it
+             collides with a JDK type; that is a Javadoc problem, not a renaming problem. -->
+        <exclude name="AvoidFieldNameMatchingTypeName"/>
+        <exclude name="AvoidDuplicateLiterals"/>
+        <!-- The SDK exposes record-style accessors throughout (posId(), not getPosId()), so every
+             field matches its reader by construction — in records inherently, and in the hand-written
+             config and client classes by the same convention. The rule fights the naming standard,
+             not a mistake. -->
+        <exclude name="AvoidFieldNameMatchingMethodName"/>
+        <!-- Clearing the cached token is the operation; there is no sentinel that means "absent"
+             more clearly than absence. -->
+        <exclude name="NullAssignment"/>
+    </rule>
+
+    <rule ref="category/java/multithreading.xml">
+        <!-- The retry loop sleeps the calling thread on purpose; that is what backoff is. -->
+        <exclude name="DoNotUseThreads"/>
+        <!-- The closed flag and the cached token are read without a lock on the fast path and
+             written under one; volatile is the correct tool, not an accident. -->
+        <exclude name="AvoidUsingVolatile"/>
+        <!-- Single-flight token acquisition is a synchronized block by design. -->
+        <exclude name="AvoidSynchronizedStatement"/>
+        <!-- The maps this rule flags are method-local and never shared. -->
+        <exclude name="UseConcurrentHashMap"/>
+    </rule>
+
+    <rule ref="category/java/performance.xml">
+        <!-- The retry loop rebuilds the request per attempt so a refreshed token can be attached.
+             Hoisting it out of the loop is precisely the bug this SDK must not have. -->
+        <exclude name="AvoidInstantiatingObjectsInLoops"/>
+    </rule>
+
+    <rule ref="category/java/design.xml">
+        <!-- Coupling and length metrics fire on the facade and builder shapes this project chose on
+             purpose; complexity is still gated below. -->
+        <exclude name="LawOfDemeter"/>
+        <exclude name="ExcessiveImports"/>
+        <exclude name="TooManyMethods"/>
+        <exclude name="TooManyFields"/>
+        <exclude name="ExcessiveParameterList"/>
+        <exclude name="DataClass"/>
+        <exclude name="LoosePackageCoupling"/>
+        <!-- EnumMap is declared concretely on purpose: its ordinal iteration order is what keeps the
+             rendered tax-rate table and the requested scope list reproducible between runs. -->
+        <exclude name="LooseCoupling"/>
+        <!-- The SDK throws its own unchecked hierarchy by design (see ADR on error mapping). -->
+        <exclude name="AvoidThrowingRawExceptionTypes"/>
+        <exclude name="SignatureDeclareThrowsException"/>
+    </rule>
+
+    <rule ref="category/java/design.xml/CyclomaticComplexity">
+        <properties>
+            <property name="classReportLevel" value="80"/>
+            <property name="methodReportLevel" value="12"/>
+        </properties>
+    </rule>
+
+    <rule ref="category/java/codestyle.xml">
+        <exclude name="OnlyOneReturn"/>
+        <exclude name="AtLeastOneConstructor"/>
+        <exclude name="LocalVariableCouldBeFinal"/>
+        <exclude name="MethodArgumentCouldBeFinal"/>
+        <exclude name="ShortClassName"/>
+        <exclude name="CommentDefaultAccessModifier"/>
+        <exclude name="ConfusingTernary"/>
+        <!-- The project's standard bans SHORT names and demands descriptive ones; PMD's default
+             17-character ceiling penalises exactly the names the standard asks for
+             (fiscalDeviceUniqueNumber, requestMayHaveBeenApplied). The two rules cannot both hold. -->
+        <exclude name="LongVariable"/>
+        <!-- `of` is the idiomatic Java factory name (Optional.of, List.of, Duration.of). -->
+        <exclude name="ShortMethodName"/>
+        <!-- Replaced below with the project's own exception list. -->
+        <exclude name="ShortVariable"/>
+    </rule>
+
+    <!--
+        Rules excluded because they contradict a deliberate design decision recorded elsewhere.
+        Each one is listed with the decision it would otherwise fight.
+    -->
+
+
+    <!--
+        The project's naming rule: no 1-3 character names. The allowed exceptions are loop counters,
+        the catch-block binding, and established domain abbreviations that name exactly the thing
+        they abbreviate.
+    -->
+    <rule ref="category/java/codestyle.xml/ShortVariable">
+        <properties>
+            <property name="minimum" value="4"/>
+            <property name="violationSuppressXPath"
+                      value="//VariableId[@Name='i' or @Name='j' or @Name='k'
+                             or @Name='id' or @Name='ean' or @Name='sku' or @Name='nip'
+                             or @Name='url' or @Name='xml' or @Name='pdf' or @Name='jws'
+                             or @Name='A' or @Name='B' or @Name='C' or @Name='D'
+                             or @Name='E' or @Name='F' or @Name='G']"/>
+        </properties>
+    </rule>
+</ruleset>

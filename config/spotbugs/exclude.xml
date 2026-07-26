@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+
+    <!-- Generated Layer 1 is not ours to fix; it is regenerated from the spec on every build. -->
+    <Match>
+        <Package name="~io\.github\.mgrtomaszzurawski\.eparagony\.rest\..*"/>
+    </Match>
+
+    <!--
+        Records that carry a byte[]-free but mutable-looking API. The SDK's records hold only
+        immutable values (String, int, Instant, immutable collections), so the exposure detectors
+        fire on shapes that cannot actually be mutated. WebhookVerifier is the one place a byte[]
+        is retained, and it is defensively handled there.
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Package name="~io\.github\.mgrtomaszzurawski\.eparagony\.(core|domain)\..*"/>
+    </Match>
+
+    <!--
+        Constructor injection of collaborators. The internal transport classes are assembled once by
+        EparagonyClient and hold references to each other (JsonCodec, TokenManager, HttpRuntime) -
+        these are services, not data, and copying them is neither possible nor meaningful. The rule
+        is aimed at arrays and dates handed across a trust boundary; there is no boundary here.
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Package name="~io\.github\.mgrtomaszzurawski\.eparagony\.internal.*"/>
+    </Match>
+
+</FindBugsFilter>
