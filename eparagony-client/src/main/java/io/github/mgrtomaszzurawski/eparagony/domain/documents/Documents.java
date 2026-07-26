@@ -18,11 +18,14 @@ package io.github.mgrtomaszzurawski.eparagony.domain.documents;
 
 import io.github.mgrtomaszzurawski.eparagony.core.model.DocumentToken;
 import io.github.mgrtomaszzurawski.eparagony.core.model.IdempotencyKey;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentAction;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentStatus;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.IssuedDocument;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRequest;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.SignedDocument;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * Issuing documents and following what becomes of them. Obtained from
@@ -73,4 +76,26 @@ public interface Documents {
      *     timeout elapses first. The document is not lost; it simply had not settled yet.
      */
     DocumentStatus awaitTerminalStatus(DocumentToken documentToken, Duration timeout);
+
+    /**
+     * Reads the status of every asynchronous action attached to a document.
+     *
+     * <p>Actions are processes run <em>for</em> a document rather than the document itself — delivering
+     * a receipt to Allegro, for instance. Each gets its own webhook; this is the pull equivalent.
+     *
+     * <p>Requires the {@code document_action_get} scope, which eparagony.pl grants on request.
+     */
+    List<DocumentAction> actions(DocumentToken documentToken);
+
+    /**
+     * Fetches the signed JWS form of an issued document — the cryptographic original, as opposed to
+     * the visualization a customer sees.
+     *
+     * <p>Not needed to issue documents; the API's own guidance says so. Fetch it when you need to
+     * archive or independently verify what was issued.
+     *
+     * <p>Requires the {@code document_get_jws} scope, which eparagony.pl grants only after agreeing
+     * the purpose and access rules with you.
+     */
+    SignedDocument signedDocument(DocumentToken documentToken);
 }

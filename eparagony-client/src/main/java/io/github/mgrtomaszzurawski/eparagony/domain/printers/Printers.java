@@ -17,7 +17,11 @@
 package io.github.mgrtomaszzurawski.eparagony.domain.printers;
 
 import io.github.mgrtomaszzurawski.eparagony.core.model.FiscalDeviceUniqueNumber;
+import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.DailyReport;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.PrinterStatus;
+
+import java.time.Instant;
+import java.util.List;
 
 /**
  * Reading the state of a fiscal printer. Obtained from {@code EparagonyClient.printers()}.
@@ -34,4 +38,19 @@ public interface Printers {
      * during trading hours, before anyone tries to fiscalize against it.
      */
     PrinterStatus status(FiscalDeviceUniqueNumber fiscalDeviceUniqueNumber);
+
+    /**
+     * Lists a printer's daily fiscal reports, optionally narrowed to a date range.
+     *
+     * <p><strong>The server returns at most 50 reports per call</strong> and offers no cursor, so a
+     * wider range does not page — it truncates. Narrow the range rather than expecting continuation;
+     * fifty days is the practical window.
+     *
+     * <p>Requires the {@code report_fiscal_get} scope, which eparagony.pl grants on request.
+     *
+     * @param issuedFrom inclusive lower bound on issuance, or {@code null} for no lower bound
+     * @param issuedTo inclusive upper bound on issuance, or {@code null} for no upper bound
+     */
+    List<DailyReport> dailyReports(FiscalDeviceUniqueNumber fiscalDeviceUniqueNumber,
+            Instant issuedFrom, Instant issuedTo);
 }

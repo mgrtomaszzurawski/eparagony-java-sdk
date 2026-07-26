@@ -122,7 +122,7 @@ class AwaitAndLifecycleTest {
         // Without this the consumer would reach the endpoint and meet an opaque 403 — the exact
         // failure the scope guard exists to eliminate one layer up.
         EparagonyConfigurationException failure = assertThrows(EparagonyConfigurationException.class,
-                () -> client().printers());
+                () -> client().printers().status(io.github.mgrtomaszzurawski.eparagony.core.model.FiscalDeviceUniqueNumber.of("ZBN1901007833")));
 
         assertTrue(failure.getMessage().contains(Scope.PRINTER_GET.wireValue()),
                 "the message must name the missing scope, but said: " + failure.getMessage());

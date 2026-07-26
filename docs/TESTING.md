@@ -73,14 +73,16 @@ Not live-verified, and why:
 
 | Endpoint / feature | State | Blocker |
 |---|---|---|
-| `GET /documents/{token}/actions/status` | **not implemented** | `document_action_get` not granted |
-| `GET /documents/{token}/jws` | **not implemented** | `document_get_jws` not granted |
-| `GET /printers/{device}/reports/daily` | **not implemented** | `report_fiscal_get` not granted |
+| `GET /documents/{token}/actions/status` | implemented, WireMock only | `document_action_get` not granted |
+| `GET /documents/{token}/jws` | implemented, WireMock only | `document_get_jws` not granted |
+| `GET /printers/{device}/reports/daily` | implemented, WireMock only | `report_fiscal_get` not granted |
 | Document status webhook | implemented, WireMock + unit only | no public ingress from the build environment |
 
-Four of seven endpoints are proven on the wire. The other three are **not implemented at all** — only
-their `ApiPaths` constants and `Scope` values exist — so calling them WireMock-covered would be false.
-The webhook path is implemented and covered offline against a real HMAC secret, but never exercised by
-a real delivery.
+**All seven endpoints are implemented.** Four are proven on the wire; three are covered by contract
+tests alone, because the sandbox client is refused their scopes with `400 invalid_scope` — the SDK
+cannot call them, not because it lacks the code but because the account lacks the grant. The webhook
+path is implemented and covered offline against a real HMAC secret, but never exercised by a real
+delivery.
 
-Stating this plainly matters more than a coverage percentage.
+Implemented and live-verified are different claims and this file keeps them apart. Stating that
+plainly matters more than a coverage percentage.

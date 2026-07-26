@@ -95,8 +95,13 @@ public final class HttpRuntime {
 
     /** {@code GET path}, returning the raw response body. For payloads the SDK resolves itself. */
     public String getRaw(String path) {
+        return getRaw(path, Map.of());
+    }
+
+    /** {@code GET path} with query parameters, returning the raw response body. */
+    public String getRaw(String path, Map<String, String> queryParameters) {
         return execute(path, IDEMPOTENT, null,
-                () -> requestBuilder(path, Map.of()).GET().build(),
+                () -> requestBuilder(path, queryParameters).GET().build(),
                 RawResponse::body);
     }
 

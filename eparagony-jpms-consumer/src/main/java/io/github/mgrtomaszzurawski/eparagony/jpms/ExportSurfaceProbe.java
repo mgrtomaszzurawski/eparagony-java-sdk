@@ -34,6 +34,9 @@ import io.github.mgrtomaszzurawski.eparagony.core.retry.RetryPolicy;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookSecret;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookVerifier;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.Documents;
+import io.github.mgrtomaszzurawski.eparagony.core.webhook.DocumentStatusNotification;
+import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookNotifications;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentAction;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentState;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentStatus;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.IssuedDocument;
@@ -41,13 +44,16 @@ import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentEntry
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentForm;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRequest;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.SignedDocument;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateCode;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateTable;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.Printers;
+import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.DailyReport;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.PrinterState;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.PrinterStatus;
 
 import java.time.Duration;
+import java.time.Instant;
 
 /**
  * Touches every type a consumer is meant to reach, so that a missing {@code exports} line breaks the
@@ -103,6 +109,11 @@ public final class ExportSurfaceProbe {
         DocumentState state = status.state();
         status.documentUrl().ifPresent(url -> consume(url + state));
         documents.status(DocumentToken.random());
+        for (DocumentAction action : documents.actions(issued.documentToken())) {
+            consume(action.actionId() + action.type() + action.state() + action.isCompleted());
+        }
+        SignedDocument signed = documents.signedDocument(issued.documentToken());
+        consume(signed.compactSerialization());
     }
 
     /** Exercises the printer facade and its model. */
@@ -111,12 +122,24 @@ public final class ExportSurfaceProbe {
         PrinterStatus status = printers.status(FiscalDeviceUniqueNumber.of("ZBN1901007833"));
         PrinterState state = status.state();
         consume(state.name());
+
+        for (DailyReport report : printers.dailyReports(
+                FiscalDeviceUniqueNumber.of("ZBN1901007833"), Instant.EPOCH, Instant.EPOCH)) {
+            consume(report.issuedAt() + "/" + report.reportNumber()
+                    + report.counters().hasAnomalies() + report.saleTotalIfReported());
+        }
     }
 
     /** Exercises webhook verification, which a consumer reaches without holding API credentials. */
     public static void webhooks(byte[] rawBody, String signatureHeader) {
         WebhookVerifier verifier = EparagonyClient.webhookVerifier(WebhookSecret.of("secret"));
         verifier.verify(rawBody, signatureHeader);
+
+        WebhookNotifications notifications =
+                EparagonyClient.webhookNotifications(WebhookSecret.of("secret"));
+        DocumentStatusNotification notification =
+                notifications.documentStatus(rawBody, signatureHeader);
+        consume(notification.status().state().name());
     }
 
     /** Exercises the exception hierarchy a consumer is expected to catch. */

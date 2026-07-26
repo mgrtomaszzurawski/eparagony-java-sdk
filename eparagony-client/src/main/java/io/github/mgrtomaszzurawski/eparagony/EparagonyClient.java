@@ -16,9 +16,7 @@
  */
 package io.github.mgrtomaszzurawski.eparagony;
 
-import io.github.mgrtomaszzurawski.eparagony.core.auth.Scope;
 import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
-import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyConfigurationException;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookNotifications;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookSecret;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookVerifier;
@@ -27,6 +25,7 @@ import io.github.mgrtomaszzurawski.eparagony.domain.printers.Printers;
 import io.github.mgrtomaszzurawski.eparagony.internal.ErrorMapper;
 import io.github.mgrtomaszzurawski.eparagony.internal.HttpRuntime;
 import io.github.mgrtomaszzurawski.eparagony.internal.JsonCodec;
+import io.github.mgrtomaszzurawski.eparagony.internal.ScopeGuard;
 import io.github.mgrtomaszzurawski.eparagony.internal.TokenManager;
 import io.github.mgrtomaszzurawski.eparagony.internal.client.documents.DocumentStatusMapper;
 import io.github.mgrtomaszzurawski.eparagony.internal.client.documents.DocumentsImpl;
@@ -79,8 +78,9 @@ public final class EparagonyClient implements AutoCloseable {
         TokenManager tokenManager = new TokenManager(httpClient, config, userAgent, codec, clock);
         HttpRuntime httpRuntime = new HttpRuntime(
                 httpClient, config, userAgent, tokenManager, codec, new ErrorMapper(codec));
-        this.documents = new DocumentsImpl(httpRuntime, codec, config.posId(), clock);
-        this.printers = new PrintersImpl(httpRuntime, codec);
+        ScopeGuard scopeGuard = new ScopeGuard(config.scopes());
+        this.documents = new DocumentsImpl(httpRuntime, codec, config.posId(), clock, scopeGuard);
+        this.printers = new PrintersImpl(httpRuntime, codec, scopeGuard);
     }
 
     /** Builds a client from a configuration. */
@@ -96,24 +96,24 @@ public final class EparagonyClient implements AutoCloseable {
     }
 
     /**
-     * Issuing documents and following their status. Requires {@link Scope#DOCUMENT_CREATE}.
+     * Issuing documents and following their status.
      *
-     * @throws EparagonyConfigurationException if that scope was not requested
+     * <p>Scopes are checked per operation, not here: {@code issue} and {@code status} need
+     * {@code document_create}, {@code actions} needs {@code document_action_get} and
+     * {@code signedDocument} needs {@code document_get_jws}. Gating the accessor on any one of them
+     * would lock a caller out of the other two.
      */
     public Documents documents() {
         ensureOpen();
-        ensureScope(Scope.DOCUMENT_CREATE, "documents()");
         return documents;
     }
 
     /**
-     * Reading fiscal printer state. Requires {@link Scope#PRINTER_GET}.
-     *
-     * @throws EparagonyConfigurationException if that scope was not requested
+     * Reading fiscal printer state and daily reports. Scopes are checked per operation — see
+     * {@link #documents()} for why.
      */
     public Printers printers() {
         ensureOpen();
-        ensureScope(Scope.PRINTER_GET, "printers()");
         return printers;
     }
 
@@ -169,24 +169,6 @@ public final class EparagonyClient implements AutoCloseable {
         }
     }
 
-    /**
-     * Refuses a facade whose scope was never requested.
-     *
-     * <p>Without this the SDK would happily hand back a facade backed by a token that cannot reach its
-     * endpoints, and the consumer would meet the opaque {@code 403 Access denied} that ADR-003 exists
-     * to eliminate — having already been protected from the same failure one layer up, at the token.
-     * Checking the requested set is enough: the token manager separately refuses a token the server
-     * did not actually grant.
-     */
-    private void ensureScope(Scope required, String accessor) {
-        if (!config.scopes().contains(required)) {
-            throw new EparagonyConfigurationException(accessor + " requires the "
-                    + required.wireValue() + " scope, but this client was configured with "
-                    + Scope.toWireValue(config.scopes())
-                    + ". Add it to EparagonyConfig.scopes() — and make sure eparagony.pl has granted "
-                    + "it to your client, or the token request itself will be rejected.");
-        }
-    }
 
     private static String userAgent(EparagonyConfig config) {
         return config.applicationUserAgent() + " " + SdkVersion.userAgentToken();

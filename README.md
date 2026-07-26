@@ -99,14 +99,15 @@ reason there is no `String` overload.
 | `POST /documents` — receipts | implemented, live-verified |
 | `GET /documents/{token}/status` | implemented, live-verified |
 | `GET /printers/{device}/status` | implemented, live-verified |
-| Webhook signature verification | implemented, unit-tested (no public ingress to verify live) |
+| `GET /documents/{token}/actions/status` | implemented, contract-tested — scope not granted, so unverified live |
+| `GET /documents/{token}/jws` | implemented, contract-tested — scope not granted, so unverified live |
+| `GET /printers/{device}/reports/daily` | implemented, contract-tested — scope not granted, so unverified live |
+| Webhook verification and parsing | implemented, unit-tested (no public ingress to verify live) |
 | `POST /documents` — invoices, corrections, tickets | **not implemented** |
-| `GET /documents/{token}/actions/status` | **not implemented** — scope not granted |
-| `GET /documents/{token}/jws` | **not implemented** — scope not granted |
-| `GET /printers/{device}/reports/daily` | **not implemented** — scope not granted |
 
-The document payload is a seven-way `oneOf`; only the receipt branch is mapped so far. The other six
-are generated in Layer 1 and waiting for a domain surface.
+All seven endpoints are implemented. The document *payload* is a separate seven-way `oneOf`, and only
+its receipt branch is mapped so far — the other six are generated in Layer 1 and waiting for a domain
+surface.
 
 ## Requirements
 
