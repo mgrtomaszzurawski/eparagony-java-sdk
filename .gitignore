@@ -1,0 +1,31 @@
+# --- Secrets (never commit; see CLAUDE.md / claude/13) ---
+*.env
+.env*
+*.asc
+*.gpg
+*.p12
+*.pem
+*.key
+credentials.*
+.gradle-credentials
+.claude/violations/
+.reviews/
+
+# --- Build output ---
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+out/
+bin/
+
+# --- Generated sources (Layer 1 is generated from openapi/swagger.json at build time) ---
+**/generated/
+**/generated-sources/
+
+# --- IDE / OS ---
+.idea/
+*.iml
+.vscode/
+.DS_Store
+*.log
