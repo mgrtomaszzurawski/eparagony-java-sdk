@@ -76,7 +76,7 @@ public record TaxRateTable(Map<TaxRateCode, String> rates) {
         return new TaxRateTable(rates);
     }
 
-    /** Starts from {@link #standardPolish()} and overrides individual slots. */
+    /** Returns a copy of this table with one slot overridden. This table is left unchanged. */
     public TaxRateTable with(TaxRateCode code, String rate) {
         EnumMap<TaxRateCode, String> copy = new EnumMap<>(rates);
         copy.put(Objects.requireNonNull(code, "code"), Objects.requireNonNull(rate, "rate"));

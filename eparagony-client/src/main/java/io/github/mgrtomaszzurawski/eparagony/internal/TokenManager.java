@@ -16,14 +16,12 @@
  */
 package io.github.mgrtomaszzurawski.eparagony.internal;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.github.mgrtomaszzurawski.eparagony.core.auth.AccessToken;
 import io.github.mgrtomaszzurawski.eparagony.core.auth.ClientCredentials;
 import io.github.mgrtomaszzurawski.eparagony.core.auth.Credentials;
 import io.github.mgrtomaszzurawski.eparagony.core.auth.Scope;
 import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyAuthException;
-import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyServerException;
 
 import java.io.IOException;
@@ -37,7 +35,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.StringJoiner;
 
 /**
@@ -66,11 +63,6 @@ public final class TokenManager {
     private static final String PARAM_CLIENT_SECRET = "client_secret";
     private static final String PARAM_SCOPE = "scope";
 
-    private static final String FIELD_ACCESS_TOKEN = "access_token";
-    private static final String FIELD_TOKEN_TYPE = "token_type";
-    private static final String FIELD_EXPIRES_IN = "expires_in";
-    private static final String FIELD_SCOPE = "scope";
-
     private static final String HEADER_CONTENT_TYPE = "Content-Type";
     private static final String HEADER_ACCEPT = "Accept";
     private static final String HEADER_USER_AGENT = "User-Agent";
@@ -79,15 +71,13 @@ public final class TokenManager {
     private static final String MEDIA_TYPE_FORM = "application/x-www-form-urlencoded";
     private static final String MEDIA_TYPE_JSON = "application/json";
 
-    private static final String DEFAULT_TOKEN_TYPE = "Bearer";
     private static final int HTTP_OK = 200;
-    private static final int HTTP_SERVER_ERROR_MIN = 500;
 
     private final HttpClient httpClient;
     private final EparagonyConfig config;
     private final String userAgent;
-    private final JsonCodec codec;
     private final Clock clock;
+    private final TokenResponseReader reader;
     private final Object acquisitionLock = new Object();
 
     private volatile AccessToken cachedToken;
@@ -97,8 +87,8 @@ public final class TokenManager {
         this.httpClient = httpClient;
         this.config = config;
         this.userAgent = userAgent;
-        this.codec = codec;
         this.clock = clock;
+        this.reader = new TokenResponseReader(codec, clock);
     }
 
     /**
@@ -125,10 +115,23 @@ public final class TokenManager {
         }
     }
 
-    /** Drops the cached token so the next call mints a fresh one. Used after a 401. */
-    public void invalidate() {
+    /**
+     * Drops the cached token so the next call mints a fresh one, but only if the cache still holds the
+     * token the caller found wanting.
+     *
+     * <p>Compare-and-clear rather than an unconditional clear. Under a burst of concurrent 401s — one
+     * expired token in flight on many threads — an unconditional clear has each thread discard the
+     * token some other thread has just minted, and they serialize into N token requests. That is
+     * precisely the pattern the authorization server throttles, arrived at by the code written to
+     * avoid it.
+     *
+     * @param staleToken the token that was rejected; ignored if the cache has already moved on
+     */
+    public void invalidate(AccessToken staleToken) {
         synchronized (acquisitionLock) {
-            cachedToken = null;
+            if (cachedToken == null || cachedToken.equals(staleToken)) {
+                cachedToken = null;
+            }
         }
     }
 
@@ -137,9 +140,9 @@ public final class TokenManager {
         HttpResponse<String> response = send(buildRequest(requestedScopes));
         int status = response.statusCode();
         if (status != HTTP_OK) {
-            throw tokenFailure(status, response.body(), requestedScopes);
+            throw reader.readFailure(status, response.body(), requestedScopes);
         }
-        return parseToken(response.body(), requestedScopes);
+        return reader.read(response.body(), config.scopes(), requestedScopes);
     }
 
     private HttpRequest buildRequest(String requestedScopes) {
@@ -177,64 +180,16 @@ public final class TokenManager {
         }
     }
 
-    private AccessToken parseToken(String body, String requestedScopes) {
-        JsonNode root = codec.readTree(body);
-        JsonNode value = root.get(FIELD_ACCESS_TOKEN);
-        if (value == null || !value.isTextual()) {
-            throw new EparagonyAuthException(
-                    "Authorization server returned HTTP 200 without an access_token");
-        }
-        JsonNode grantedScopeNode = root.get(FIELD_SCOPE);
-        String grantedScopeValue = grantedScopeNode == null ? null : grantedScopeNode.asText(null);
-        Set<Scope> granted = Scope.parseWireValue(grantedScopeValue);
-        requireScopesGranted(granted, requestedScopes, grantedScopeValue);
-
-        JsonNode tokenType = root.get(FIELD_TOKEN_TYPE);
-        JsonNode expiresIn = root.get(FIELD_EXPIRES_IN);
-        if (expiresIn == null || !expiresIn.isNumber()) {
-            throw new EparagonyAuthException(
-                    "Authorization server returned a token without a usable expires_in");
-        }
-        return new AccessToken(
-                value.asText(),
-                tokenType != null && tokenType.isTextual() ? tokenType.asText() : DEFAULT_TOKEN_TYPE,
-                granted,
-                clock.instant().plusSeconds(expiresIn.asLong()));
-    }
-
-    private void requireScopesGranted(Set<Scope> granted, String requestedScopes, String grantedScopeValue) {
-        if (granted.containsAll(config.scopes())) {
-            return;
-        }
-        StringJoiner missing = new StringJoiner(", ");
-        config.scopes().stream()
-                .filter(scope -> !granted.contains(scope))
-                .forEach(scope -> missing.add(scope.wireValue()));
-        throw new EparagonyAuthException(
-                "Authorization server issued a token that does not grant [" + missing + "]. "
-                        + "Requested scope was \"" + requestedScopes + "\"; the response "
-                        + describeGranted(grantedScopeValue)
-                        + ". A token without the required scope is accepted by the authorization server "
-                        + "but rejected by every endpoint with an opaque 403, so it is refused here. "
-                        + "Request the missing scope from eparagony.pl support, or narrow "
-                        + "EparagonyConfig.scopes() to what this client is granted.");
-    }
-
-    private static String describeGranted(String grantedScopeValue) {
-        return grantedScopeValue == null
-                ? "carried no scope field at all"
-                : "granted \"" + grantedScopeValue + "\"";
-    }
-
-    private EparagonyException tokenFailure(int status, String body, String requestedScopes) {
-        String detail = body == null || body.isBlank() ? "" : ": " + body;
-        if (status >= HTTP_SERVER_ERROR_MIN) {
-            return new EparagonyServerException(
-                    "Authorization server returned HTTP " + status + detail, status, false);
-        }
-        return new EparagonyAuthException("Token request rejected with HTTP " + status
-                + " for scope \"" + requestedScopes + "\"" + detail);
-    }
+    /**
+     * Renders a failed token response for an exception message, extracting only the fields OAuth 2
+     * defines for the purpose.
+     *
+     * <p>Never the raw body. This is the one request in the SDK whose payload carries the
+     * {@code client_secret}, and an authorization server that echoes the request back — some do, on
+     * a validation error — would put that secret into whatever log the consumer writes the exception
+     * to. Extracting named fields, and capping their length, keeps the diagnosis without the
+     * disclosure.
+     */
 
     private static String urlEncode(Map<String, String> form) {
         StringJoiner encoded = new StringJoiner("&");

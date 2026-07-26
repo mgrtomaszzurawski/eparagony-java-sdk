@@ -19,7 +19,6 @@ package io.github.mgrtomaszzurawski.eparagony.domain.documents.model;
 import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
 
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * One tender against a receipt. A receipt may be settled with several.
@@ -47,7 +46,4 @@ public record PaymentEntry(PaymentForm form, Amount amount, String name) {
         return new PaymentEntry(form, amount, Objects.requireNonNull(name, "name"));
     }
 
-    public Optional<String> nameIfPresent() {
-        return Optional.ofNullable(name);
-    }
 }

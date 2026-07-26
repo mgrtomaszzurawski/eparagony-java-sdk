@@ -93,9 +93,14 @@ class RetryPolicyTest {
                 .maxBackoff(Duration.ofSeconds(2))
                 .build();
 
-        assertTrue(policy.backoff(20, null).toMillis() <= 2000);
-        // A pathological retry index must not overflow the shift into a negative wait.
-        assertTrue(policy.backoff(Integer.MAX_VALUE, null).toMillis() > 0);
+        long capped = policy.backoff(20, null).toMillis();
+        long pathological = policy.backoff(Integer.MAX_VALUE, null).toMillis();
+
+        // Both bounds, not just the ceiling: a backoff of 0 is a busy loop, and asserting only
+        // "<= max" would let one through.
+        assertTrue(capped >= 1000 && capped <= 2000, "capped backoff was " + capped + "ms");
+        assertTrue(pathological >= 1000 && pathological <= 2000,
+                "a pathological retry index must not overflow the shift; was " + pathological + "ms");
     }
 
     @RepeatedTest(value = JITTER_SAMPLES, name = "Retry-After is a floor that jitter never undercuts")
@@ -119,7 +124,10 @@ class RetryPolicyTest {
                 .maxRetryAfter(Duration.ofSeconds(30))
                 .build();
 
-        assertTrue(policy.backoff(0, Duration.ofHours(2)).toMillis() <= 30_000);
+        long wait = policy.backoff(0, Duration.ofHours(2)).toMillis();
+
+        assertTrue(wait <= 30_000, "Retry-After must be capped, but waited " + wait + "ms");
+        assertTrue(wait >= 15_000, "the cap is a value, not zero; waited " + wait + "ms");
     }
 
     @Test
@@ -131,7 +139,10 @@ class RetryPolicyTest {
                 .maxBackoff(Duration.ofMillis(1000))
                 .build();
 
-        assertTrue(policy.backoff(5, null).toMillis() <= 1000);
+        long wait = policy.backoff(5, null).toMillis();
+
+        assertTrue(wait >= 500 && wait <= 1000,
+                "fixed backoff must not grow with the retry index; attempt 5 waited " + wait + "ms");
     }
 
     @Test

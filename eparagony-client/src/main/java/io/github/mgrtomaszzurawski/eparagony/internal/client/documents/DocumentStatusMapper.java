@@ -27,7 +27,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 
 /**
- * Reads a status payload into {@link DocumentStatus}. Package-private.
+ * Reads a status payload into {@link DocumentStatus}. Internal: never exported.
  *
  * <p>Parsed from the JSON tree rather than through a generated model. The specification declares this
  * response as a {@code oneOf} across document kinds, each with a nested {@code discriminator} on
@@ -39,7 +39,7 @@ import java.time.format.DateTimeParseException;
  * <p>The same mapper serves both channels: the polling endpoint and the webhook notification carry
  * the same shape, differing only in which states they can express.
  */
-final class DocumentStatusMapper {
+public final class DocumentStatusMapper {
 
     private static final String FIELD_STATUS = "status";
     private static final String FIELD_DOCUMENT_TOKEN = "documentToken";
@@ -61,7 +61,7 @@ final class DocumentStatusMapper {
     private DocumentStatusMapper() {
     }
 
-    static DocumentStatus fromJson(JsonNode root) {
+    public static DocumentStatus fromJson(JsonNode root) {
         // Kept as a local rather than extracted to a helper: a method declared to return `Boolean`
         // that can hand back null is an auto-unboxing NPE waiting for its first caller. The tri-state
         // is genuinely needed here — the server not saying whether paper was produced is not the same

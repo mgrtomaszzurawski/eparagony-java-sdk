@@ -31,6 +31,7 @@ import io.github.mgrtomaszzurawski.eparagony.rest.model.ReceiptMetadata;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.TaxRates;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Maps the SDK's {@link ReceiptRequest} onto the generated Layer-1 payload. Package-private: the
@@ -48,9 +49,11 @@ final class ReceiptRequestMapper {
         CreateReceiptDocumentPayload payload = new CreateReceiptDocumentPayload()
                 .posId(posId.value())
                 .eReceipt(toReceipt(request));
-        request.documentTokenIfPresent().ifPresent(token -> payload.documentToken(token.value()));
-        request.transactionTokenIfPresent().ifPresent(token -> payload.transactionToken(token.value()));
-        request.statusUrlIfPresent().ifPresent(payload::statusUrl);
+        Optional.ofNullable(request.documentToken())
+                .ifPresent(token -> payload.documentToken(token.value()));
+        Optional.ofNullable(request.transactionToken())
+                .ifPresent(token -> payload.transactionToken(token.value()));
+        Optional.ofNullable(request.statusUrl()).ifPresent(payload::statusUrl);
         return payload;
     }
 
@@ -67,8 +70,8 @@ final class ReceiptRequestMapper {
         ReceiptMetadata metadata = new ReceiptMetadata()
                 .grossSaleValue(request.grossSaleValue().grosze())
                 .taxRates(toTaxRates(request.taxRates()));
-        request.orderIdIfPresent().ifPresent(metadata::orderId);
-        request.merchantDocumentIdIfPresent().ifPresent(metadata::merchantDocumentId);
+        Optional.ofNullable(request.orderId()).ifPresent(metadata::orderId);
+        Optional.ofNullable(request.merchantDocumentId()).ifPresent(metadata::merchantDocumentId);
         return metadata;
     }
 
@@ -97,9 +100,9 @@ final class ReceiptRequestMapper {
                 .unitPrice(line.unitPrice().grosze())
                 .totalLineValue(line.totalLineValue().grosze())
                 .taxRate(ReceiptLineProduct.TaxRateEnum.fromValue(line.taxRate().name()));
-        line.unitOfMeasureIfPresent().ifPresent(product::unitOfMeasure);
-        line.eanIfPresent().ifPresent(product::EAN);
-        line.skuIfPresent().ifPresent(product::SKU);
+        Optional.ofNullable(line.unitOfMeasure()).ifPresent(product::unitOfMeasure);
+        Optional.ofNullable(line.ean()).ifPresent(product::EAN);
+        Optional.ofNullable(line.sku()).ifPresent(product::SKU);
         return new ReceiptLine(product);
     }
 
@@ -107,7 +110,7 @@ final class ReceiptRequestMapper {
         Payment payment = new Payment()
                 .payments(request.payments().stream().map(ReceiptRequestMapper::toPaymentEntry).toList())
                 .totalPaid(request.totalPaid().grosze());
-        request.changeIfPresent().ifPresent(change -> payment.change(change.grosze()));
+        Optional.ofNullable(request.change()).ifPresent(change -> payment.change(change.grosze()));
         return payment;
     }
 
@@ -115,7 +118,7 @@ final class ReceiptRequestMapper {
         Payments payments = new Payments()
                 .paymentForm(Payments.PaymentFormEnum.fromValue(entry.form().wireValue()))
                 .paidThisForm(entry.amount().grosze());
-        entry.nameIfPresent().ifPresent(payments::paymentName);
+        Optional.ofNullable(entry.name()).ifPresent(payments::paymentName);
         return payments;
     }
 }

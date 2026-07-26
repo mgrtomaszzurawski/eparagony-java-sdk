@@ -26,7 +26,6 @@ import java.security.GeneralSecurityException;
 import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,6 +34,10 @@ class WebhookVerifierTest {
 
     private static final String SECRET_VALUE = "test-webhook-secret-value";
     private static final String HMAC_ALGORITHM = "HmacSHA256";
+
+    /** HMAC-SHA256 of the ASCII bytes "eparagony" under the key "key", hex-encoded. */
+    private static final String KNOWN_ANSWER_SIGNATURE =
+            "b6627987af0233976e7bdaf0e02617a5e2f2edb8d1f886213dd782d660dab91e";
 
     /**
      * A body whose re-serialization would differ from its raw form: the key order and the spacing are
@@ -127,15 +130,20 @@ class WebhookVerifierTest {
     }
 
     @Test
-    @DisplayName("matches a signature computed the way the API documents it")
-    void matchesDocumentedAlgorithm() {
-        // The API documents the signature as hash_hmac('sha256', requestBody, webhookSecret), whose
-        // PHP form returns lower-case hex of exactly 64 characters. Pinning the length and casing here
-        // catches a future switch to Base64 or to a different digest.
-        String signature = hmacHex(RAW_BODY.getBytes(StandardCharsets.UTF_8));
+    @DisplayName("accepts a known-answer vector rather than a signature it computed itself")
+    void acceptsKnownAnswerVector() {
+        // A fixed vector, independently reproducible with:
+        //   printf '%s' 'eparagony' | openssl dgst -sha256 -hmac 'key' -hex
+        //
+        // The previous version of this test asserted that its own helper returned 64 lower-case hex
+        // characters — true by construction, and it never invoked the verifier at all. This one
+        // fails if the algorithm, the key encoding or the output encoding ever changes.
+        WebhookVerifier keyedVerifier = new WebhookVerifier(WebhookSecret.of("key"));
+        byte[] body = "eparagony".getBytes(StandardCharsets.UTF_8);
 
-        assertEquals(64, signature.length());
-        assertEquals(signature.toLowerCase(java.util.Locale.ROOT), signature);
+        assertDoesNotThrow(() -> keyedVerifier.verify(body, KNOWN_ANSWER_SIGNATURE));
+        assertFalse(keyedVerifier.isValid(body, KNOWN_ANSWER_SIGNATURE.replace('b', 'c')),
+                "a digest that is not the known answer must be rejected");
     }
 
     private static String hmacHex(byte[] body) {

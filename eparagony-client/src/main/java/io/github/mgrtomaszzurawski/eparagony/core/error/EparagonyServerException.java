@@ -32,8 +32,12 @@ public final class EparagonyServerException extends EparagonyException {
 
     private static final long serialVersionUID = 1L;
 
-    private final transient int statusCode;
-    private final transient boolean requestMayHaveBeenApplied;
+    // NOT transient. Both are part of the exception's contract: `requestMayHaveBeenApplied` is how a
+    // caller decides whether reissuing a receipt would double-fiscalize a sale. Marking them transient
+    // on a Serializable type would silently reset them to 0/false across a round trip — turning
+    // "the sale may already be fiscalized" into "it definitely is not".
+    private final int statusCode;
+    private final boolean requestMayHaveBeenApplied;
 
     /** Sentinel {@link #statusCode()} for a failure that never produced an HTTP response. */
     public static final int NO_HTTP_RESPONSE = 0;

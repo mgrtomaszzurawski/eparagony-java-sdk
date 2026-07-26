@@ -18,7 +18,8 @@ package io.github.mgrtomaszzurawski.eparagony.core.auth;
 
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.LinkedHashSet;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -87,9 +88,9 @@ public enum Scope {
      * threw on an unknown grant would break the moment it did.
      */
     public static Set<Scope> parseWireValue(String wireValue) {
-        Set<Scope> parsed = new LinkedHashSet<>();
+        EnumSet<Scope> parsed = EnumSet.noneOf(Scope.class);
         if (wireValue == null || wireValue.isBlank()) {
-            return parsed;
+            return Collections.unmodifiableSet(parsed);
         }
         for (String candidate : wireValue.trim().split("\\s+")) {
             Arrays.stream(values())
@@ -97,6 +98,8 @@ public enum Scope {
                     .findFirst()
                     .ifPresent(parsed::add);
         }
-        return parsed;
+        // Unmodifiable: this is exported API, and a caller mutating the returned set would be
+        // mutating what looks like a fact about the token they hold.
+        return Collections.unmodifiableSet(parsed);
     }
 }

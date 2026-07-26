@@ -267,8 +267,8 @@ class IssueReceiptTest {
 
         assertEquals(DocumentState.CONFIRMED, status.state());
         assertTrue(status.isConfirmed());
-        assertEquals(570, status.fiscalDocumentNumberIfPresent().orElseThrow());
-        assertEquals("ZBN1901007833", status.fiscalDeviceUniqueNumberIfPresent().orElseThrow().value());
+        assertEquals(570, status.fiscalDocumentNumber().orElseThrow());
+        assertEquals("ZBN1901007833", status.fiscalDeviceUniqueNumber().orElseThrow().value());
     }
 
     @Test
@@ -281,7 +281,7 @@ class IssueReceiptTest {
                 .awaitTerminalStatus(DocumentToken.of(DOCUMENT_TOKEN), java.time.Duration.ofSeconds(30));
 
         assertEquals(DocumentState.ERROR, status.state());
-        assertEquals("schodek podatkowy", status.errorMessageIfPresent().orElseThrow());
+        assertEquals("schodek podatkowy", status.errorMessage().orElseThrow());
     }
 
     @Test

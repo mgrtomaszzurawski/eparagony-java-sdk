@@ -34,6 +34,7 @@ import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentForm;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRequest;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateCode;
+import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.PrinterState;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.PrinterStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -43,6 +44,7 @@ import java.time.Duration;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -97,12 +99,12 @@ class SandboxLiveTest {
 
             assertEquals(DocumentState.CONFIRMED, status.state());
             // What the caller sent comes back intact — this is the part the emulator does not fake.
-            assertEquals(orderId, status.orderIdIfPresent().orElseThrow());
-            assertEquals(orderId, status.merchantDocumentIdIfPresent().orElseThrow());
-            assertEquals(false, status.printedIfPresent().orElseThrow());
+            assertEquals(orderId, status.orderId().orElseThrow());
+            assertEquals(orderId, status.merchantDocumentId().orElseThrow());
+            assertEquals(false, status.printed().orElseThrow());
             // Device-side values are present but constant on the emulator; assert presence, not value.
-            assertTrue(status.fiscalDocumentIdIfPresent().isPresent());
-            assertTrue(status.documentUrlIfPresent().orElseThrow().startsWith("https://"));
+            assertTrue(status.fiscalDocumentId().isPresent());
+            assertTrue(status.documentUrl().orElseThrow().startsWith("https://"));
         }
     }
 
@@ -115,7 +117,11 @@ class SandboxLiveTest {
             PrinterStatus status = client.printers()
                     .status(FiscalDeviceUniqueNumber.of(EMULATOR_DEVICE));
 
-            assertNotNull(status.state());
+            // assertNotNull would be vacuous: an unrecognised or absent status maps to UNKNOWN, never
+            // to null. Asserting the state is one the SDK actually understands is what makes this test
+            // able to fail — if the API starts reporting a state we do not model, this goes red.
+            assertNotEquals(PrinterState.UNKNOWN, status.state(),
+                    "the live printer state must be one this SDK models, but was UNKNOWN");
         }
     }
 

@@ -16,6 +16,7 @@
  */
 package io.github.mgrtomaszzurawski.eparagony.internal;
 
+import io.github.mgrtomaszzurawski.eparagony.core.auth.AccessToken;
 import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyServerException;
 import io.github.mgrtomaszzurawski.eparagony.core.model.IdempotencyKey;
@@ -144,8 +145,9 @@ public final class HttpRuntime {
         while (true) {
             attempt++;
             boolean mayRetry = attempt < retryPolicy.maxAttempts();
-            HttpResponse<String> response =
-                    sendOrRetry(requestFactory.get(), idempotencyKey, path, idempotent, mayRetry, retryIndex);
+            AccessToken attemptToken = tokenManager.currentToken();
+            HttpResponse<String> response = sendOrRetry(
+                    requestFactory.get(), attemptToken, idempotencyKey, path, idempotent, mayRetry, retryIndex);
             if (response == null) {
                 retryIndex++;
                 continue;
@@ -160,7 +162,9 @@ public final class HttpRuntime {
             // token endpoint is precisely what the server throttles.
             if (status == HTTP_UNAUTHORIZED && !reauthenticated) {
                 reauthenticated = true;
-                tokenManager.invalidate();
+                // Compare-and-clear against the token this attempt actually used, so a concurrent
+                // thread's freshly minted token is not thrown away with it.
+                tokenManager.invalidate(attemptToken);
                 continue;
             }
             if (mayRetry && retryPolicy.isRetryableStatus(status, idempotent)) {
@@ -176,11 +180,12 @@ public final class HttpRuntime {
      * happened and the backoff has already been served" — which keeps the retry bookkeeping out of
      * the caller's exception handling.
      */
-    private HttpResponse<String> sendOrRetry(HttpRequest unauthorized, IdempotencyKey idempotencyKey,
-            String path, boolean idempotent, boolean mayRetry, int retryIndex) {
+    private HttpResponse<String> sendOrRetry(HttpRequest unauthorized, AccessToken token,
+            IdempotencyKey idempotencyKey, String path, boolean idempotent, boolean mayRetry,
+            int retryIndex) {
         RetryPolicy retryPolicy = config.retryPolicy();
         try {
-            return httpClient.send(authorize(unauthorized, idempotencyKey),
+            return httpClient.send(authorize(unauthorized, token, idempotencyKey),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException failure) {
             if (mayRetry && retryPolicy.isRetryableTransportFailure(idempotent)) {
@@ -195,9 +200,9 @@ public final class HttpRuntime {
         }
     }
 
-    private HttpRequest authorize(HttpRequest request, IdempotencyKey idempotencyKey) {
+    private HttpRequest authorize(HttpRequest request, AccessToken token, IdempotencyKey idempotencyKey) {
         HttpRequest.Builder authorized = HttpRequest.newBuilder(request, (name, value) -> true)
-                .header(HEADER_AUTHORIZATION, tokenManager.currentToken().authorizationHeaderValue());
+                .header(HEADER_AUTHORIZATION, token.authorizationHeaderValue());
         if (idempotencyKey != null) {
             authorized.header(HEADER_IDEMPOTENCY_KEY, idempotencyKey.value());
         }

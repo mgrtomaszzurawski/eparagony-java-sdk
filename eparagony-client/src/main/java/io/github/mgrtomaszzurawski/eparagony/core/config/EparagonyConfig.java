@@ -22,9 +22,11 @@ import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyConfigurationEx
 import io.github.mgrtomaszzurawski.eparagony.core.model.PosId;
 import io.github.mgrtomaszzurawski.eparagony.core.retry.RetryPolicy;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -45,6 +47,12 @@ public final class EparagonyConfig {
      */
     private static final Set<String> GENERIC_USER_AGENT_PREFIXES =
             Set.of("java", "java-http-client", "okhttp", "apache-httpclient", "curl", "wget", "python");
+
+    private static final String SCHEME_HTTPS = "https";
+    private static final String SCHEME_HTTP = "http";
+
+    /** Hosts for which cleartext HTTP is tolerated, because nothing leaves the machine. */
+    private static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "::1", "[::1]");
 
     private final Environment environment;
     private final String authBaseUrl;
@@ -151,15 +159,25 @@ public final class EparagonyConfig {
             return this;
         }
 
-        /** Overrides the authorization base URL. Intended for tests pointing at a local stub server. */
+        /**
+         * Overrides the authorization base URL. Intended for tests pointing at a local stub server.
+         *
+         * <p>Plain HTTP is permitted only against a loopback address. Everything the SDK sends to this
+         * host is a credential, so an unencrypted override to a real hostname would put the client
+         * secret on the wire in cleartext — a misconfiguration worth refusing rather than warning
+         * about.
+         */
         public Builder authBaseUrl(String value) {
-            this.authBaseUrl = Objects.requireNonNull(value, "authBaseUrl");
+            this.authBaseUrl = requireSecureOrLoopback(value, "authBaseUrl");
             return this;
         }
 
-        /** Overrides the API base URL. Intended for tests pointing at a local stub server. */
+        /**
+         * Overrides the API base URL. Intended for tests pointing at a local stub server. Subject to
+         * the same transport rule as {@link #authBaseUrl(String)}: bearer tokens travel here.
+         */
         public Builder apiBaseUrl(String value) {
-            this.apiBaseUrl = Objects.requireNonNull(value, "apiBaseUrl");
+            this.apiBaseUrl = requireSecureOrLoopback(value, "apiBaseUrl");
             return this;
         }
 
@@ -182,7 +200,12 @@ public final class EparagonyConfig {
             if (values.length == 0) {
                 throw new EparagonyConfigurationException("at least one scope must be requested");
             }
-            this.scopes = EnumSet.copyOf(Set.of(values));
+            // Collected into an EnumSet directly rather than through Set.of, which rejects a repeated
+            // element with IllegalArgumentException. Asking for the same scope twice is redundant, not
+            // an error.
+            EnumSet<Scope> requested = EnumSet.noneOf(Scope.class);
+            requested.addAll(java.util.Arrays.asList(values));
+            this.scopes = requested;
             return this;
         }
 
@@ -223,6 +246,38 @@ public final class EparagonyConfig {
             return new EparagonyConfig(this);
         }
 
+        /**
+         * Accepts {@code https://} anywhere, and {@code http://} only against loopback. Both base URLs
+         * carry secrets — the client secret to one, the bearer token to the other — so cleartext to a
+         * remote host is refused outright.
+         */
+        private static String requireSecureOrLoopback(String value, String name) {
+            Objects.requireNonNull(value, name);
+            URI parsed = parseUrl(value, name);
+            String scheme = parsed.getScheme() == null ? "" : parsed.getScheme().toLowerCase(Locale.ROOT);
+            if (SCHEME_HTTPS.equals(scheme)) {
+                return value;
+            }
+            if (SCHEME_HTTP.equals(scheme) && isLoopback(parsed.getHost())) {
+                return value;
+            }
+            throw new EparagonyConfigurationException(name + " must use https, or http against a "
+                    + "loopback address for testing, but was: " + value);
+        }
+
+        private static URI parseUrl(String value, String name) {
+            try {
+                return URI.create(value);
+            } catch (IllegalArgumentException malformed) {
+                throw new EparagonyConfigurationException(
+                        name + " is not a valid URL: " + value, malformed);
+            }
+        }
+
+        private static boolean isLoopback(String host) {
+            return host != null && LOOPBACK_HOSTS.contains(host.toLowerCase(Locale.ROOT));
+        }
+
         private static void requirePresent(Object value, String name) {
             if (value == null) {
                 throw new EparagonyConfigurationException(name + " is required");
@@ -235,7 +290,7 @@ public final class EparagonyConfig {
                 throw new EparagonyConfigurationException(
                         "applicationUserAgent must identify your application, e.g. \"BarkShop/2.1 (+https://barkshop.pl)\"");
             }
-            String leadingToken = trimmed.split("[/ ]", 2)[0].toLowerCase(java.util.Locale.ROOT);
+            String leadingToken = trimmed.split("[/ ]", 2)[0].toLowerCase(Locale.ROOT);
             if (GENERIC_USER_AGENT_PREFIXES.contains(leadingToken)) {
                 throw new EparagonyConfigurationException(
                         "applicationUserAgent \"" + trimmed + "\" is generic and the API rejects it; "

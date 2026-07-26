@@ -30,4 +30,8 @@ public final class EparagonyConfigurationException extends EparagonyException {
     public EparagonyConfigurationException(String message) {
         super(message);
     }
+
+    public EparagonyConfigurationException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

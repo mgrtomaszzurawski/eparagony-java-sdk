@@ -20,7 +20,6 @@ import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
 
 import java.math.BigDecimal;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * A single sold item on a receipt.
@@ -71,17 +70,8 @@ public record ReceiptLine(
         return new Builder();
     }
 
-    public Optional<String> unitOfMeasureIfPresent() {
-        return Optional.ofNullable(unitOfMeasure);
-    }
 
-    public Optional<String> eanIfPresent() {
-        return Optional.ofNullable(ean);
-    }
 
-    public Optional<String> skuIfPresent() {
-        return Optional.ofNullable(sku);
-    }
 
     /** Builder for {@link ReceiptLine}. */
     public static final class Builder {

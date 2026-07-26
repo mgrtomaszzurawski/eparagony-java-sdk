@@ -117,7 +117,7 @@ class ReceiptRequestBuilderTest {
                 .change(Amount.ofGrosze(500))
                 .build();
 
-        assertEquals(500, request.changeIfPresent().orElseThrow().grosze());
+        assertEquals(500, request.change().grosze());
     }
 
     @Test

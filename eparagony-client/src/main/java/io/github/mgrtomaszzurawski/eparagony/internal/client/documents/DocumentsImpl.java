@@ -96,18 +96,29 @@ public final class DocumentsImpl implements Documents {
             throw new IllegalArgumentException("timeout must be positive but was " + timeout);
         }
         Instant deadline = clock.instant().plus(timeout);
-        while (true) {
+        // Bounded by a poll count as well as by the deadline. The clock is injectable, and a test
+        // clock that does not advance would otherwise make this loop forever — a hang is a worse
+        // failure than a timeout, and harder to diagnose.
+        long maxPolls = Math.max(1, timeout.toMillis() / POLL_INTERVAL.toMillis() + 1);
+        for (long poll = 0; poll < maxPolls; poll++) {
             DocumentStatus current = status(documentToken);
             if (current.isTerminal()) {
                 return current;
             }
             if (!clock.instant().plus(POLL_INTERVAL).isBefore(deadline)) {
-                throw new EparagonyServerException(
-                        "Document " + documentToken + " was still " + current.state() + " after "
-                                + timeout + "; it has not failed, it has not settled yet", 0, false);
+                throw notSettled(documentToken, current, timeout);
             }
             sleep();
         }
+        throw notSettled(documentToken, status(documentToken), timeout);
+    }
+
+    private static EparagonyServerException notSettled(DocumentToken documentToken,
+            DocumentStatus current, Duration timeout) {
+        return new EparagonyServerException(
+                "Document " + documentToken + " was still " + current.state() + " after " + timeout
+                        + "; it has not failed, it has not settled yet",
+                EparagonyServerException.NO_HTTP_RESPONSE, false);
     }
 
     private void sleep() {

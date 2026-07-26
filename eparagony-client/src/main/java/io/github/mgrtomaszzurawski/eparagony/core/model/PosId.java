@@ -37,7 +37,7 @@ public record PosId(String value) {
         }
     }
 
-    /** Wraps the identifier issued by eparagony.pl, e.g. {@code "sklepzoologicznybarkshop"}. */
+    /** Wraps the identifier issued by eparagony.pl, e.g. {@code "pos-10"}. */
     public static PosId of(String value) {
         return new PosId(value);
     }

@@ -23,7 +23,6 @@ import io.github.mgrtomaszzurawski.eparagony.core.model.TransactionToken;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * A request to issue a fiscal e-receipt.
@@ -54,35 +53,31 @@ public record ReceiptRequest(
         Objects.requireNonNull(totalPaid, "totalPaid");
         Objects.requireNonNull(grossSaleValue, "grossSaleValue");
         Objects.requireNonNull(taxRates, "taxRates");
+        // The canonical constructor is public because records make it so. It must therefore enforce
+        // the same invariants as the builder, or it becomes a documented-away back door around the
+        // reconciliation this type exists to guarantee.
+        if (lines.isEmpty()) {
+            throw new IllegalArgumentException("a receipt must have at least one line");
+        }
+        if (payments.isEmpty()) {
+            throw new IllegalArgumentException("a receipt must have at least one payment");
+        }
+        if (totalPaid.grosze() < grossSaleValue.grosze()) {
+            throw new IllegalArgumentException("payments total " + totalPaid
+                    + " but the declared sale value is " + grossSaleValue
+                    + "; the payments must cover the sale");
+        }
     }
 
     public static Builder builder() {
         return new Builder();
     }
 
-    public Optional<Amount> changeIfPresent() {
-        return Optional.ofNullable(change);
-    }
 
-    public Optional<String> orderIdIfPresent() {
-        return Optional.ofNullable(orderId);
-    }
 
-    public Optional<String> merchantDocumentIdIfPresent() {
-        return Optional.ofNullable(merchantDocumentId);
-    }
 
-    public Optional<DocumentToken> documentTokenIfPresent() {
-        return Optional.ofNullable(documentToken);
-    }
 
-    public Optional<TransactionToken> transactionTokenIfPresent() {
-        return Optional.ofNullable(transactionToken);
-    }
 
-    public Optional<String> statusUrlIfPresent() {
-        return Optional.ofNullable(statusUrl);
-    }
 
     /** Builder for {@link ReceiptRequest}. */
     public static final class Builder {
@@ -215,10 +210,25 @@ public record ReceiptRequest(
                     statusUrl);
         }
 
+        /**
+         * Sums amounts, failing loudly on overflow.
+         *
+         * <p>{@code Math.addExact}, not {@code +}. Amounts are grosze in an {@code int}, so a total
+         * above 21 474 836.47 PLN wraps to a negative number — the declared gross value would go out
+         * negative and {@link #requireCovers} would then pass trivially, because any payment "covers"
+         * a negative sale. A receipt that large is a data error rather than a real transaction, and it
+         * should say so instead of silently producing a nonsensical document.
+         */
         private static Amount sum(List<Amount> amounts) {
             int total = 0;
             for (Amount amount : amounts) {
-                total += amount.grosze();
+                try {
+                    total = Math.addExact(total, amount.grosze());
+                } catch (ArithmeticException overflow) {
+                    throw new IllegalArgumentException(
+                            "receipt amounts exceed what a fiscal document can represent "
+                                    + "(the running total overflowed at " + amount + ")", overflow);
+                }
             }
             return Amount.ofGrosze(total);
         }

@@ -58,7 +58,8 @@ its remediation implies — not merely that something was thrown.
 environment and **self-skips when they are absent**. A skip is not a pass: check the report for
 `skipped="0"` before claiming live coverage.
 
-Credentials live in `/workspace/shared/secrets/` and never in the repository.
+Credentials are supplied through those environment variables and never committed. Where they are
+stored is a deployment concern and deliberately not recorded in a public repository.
 
 ## Current coverage, honestly
 
@@ -70,13 +71,16 @@ Live-verified: `POST /auth/token`, `POST /documents`, `GET /documents/{token}/st
 
 Not live-verified, and why:
 
-| Endpoint / feature | Blocker |
-|---|---|
-| `GET /documents/{token}/actions/status` | `document_action_get` not granted |
-| `GET /documents/{token}/jws` | `document_get_jws` not granted |
-| `GET /printers/{device}/reports/daily` | `report_fiscal_get` not granted |
-| Both webhooks | no public ingress from the build environment |
+| Endpoint / feature | State | Blocker |
+|---|---|---|
+| `GET /documents/{token}/actions/status` | **not implemented** | `document_action_get` not granted |
+| `GET /documents/{token}/jws` | **not implemented** | `document_get_jws` not granted |
+| `GET /printers/{device}/reports/daily` | **not implemented** | `report_fiscal_get` not granted |
+| Document status webhook | implemented, WireMock + unit only | no public ingress from the build environment |
 
-Four of seven endpoints are proven on the wire. The remaining three are WireMock-only, and the webhook
-verifier is unit-tested offline against a real secret. Stating this plainly matters more than a
-coverage percentage.
+Four of seven endpoints are proven on the wire. The other three are **not implemented at all** — only
+their `ApiPaths` constants and `Scope` values exist — so calling them WireMock-covered would be false.
+The webhook path is implemented and covered offline against a real HMAC secret, but never exercised by
+a real delivery.
+
+Stating this plainly matters more than a coverage percentage.

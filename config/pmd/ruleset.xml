@@ -30,6 +30,9 @@
              parameter there IS the field initialization, and PMD reads it as dead. That the copy is
              live is proven by TaxRateTableImmutabilityTest. -->
         <exclude name="UnusedAssignment"/>
+        <!-- The loopback literals in EparagonyConfig are the definition of "loopback", not an
+             environment detail that could leak or drift. -->
+        <exclude name="AvoidUsingHardCodedIP"/>
     </rule>
 
     <rule ref="category/java/errorprone.xml">

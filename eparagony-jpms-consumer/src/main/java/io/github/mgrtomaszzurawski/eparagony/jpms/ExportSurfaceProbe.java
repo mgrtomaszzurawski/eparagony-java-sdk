@@ -1,3 +1,19 @@
+/*
+ * eparagony-java-sdk — a typed Java client for the eparagony.pl Documents REST API.
+ * Copyright (C) 2026 Tomasz Zurawski
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU Affero General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option) any
+ * later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+ * PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along
+ * with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 package io.github.mgrtomaszzurawski.eparagony.jpms;
 
 import io.github.mgrtomaszzurawski.eparagony.EparagonyClient;
@@ -5,8 +21,6 @@ import io.github.mgrtomaszzurawski.eparagony.core.auth.ClientCredentials;
 import io.github.mgrtomaszzurawski.eparagony.core.auth.Scope;
 import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
 import io.github.mgrtomaszzurawski.eparagony.core.config.Environment;
-import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyAccessDeniedException;
-import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyAuthException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyServerException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyValidationException;
@@ -87,7 +101,7 @@ public final class ExportSurfaceProbe {
         IssuedDocument issued = documents.issue(request, IdempotencyKey.random());
         DocumentStatus status = documents.awaitTerminalStatus(issued.documentToken(), Duration.ofMinutes(1));
         DocumentState state = status.state();
-        status.documentUrlIfPresent().ifPresent(url -> consume(url + state));
+        status.documentUrl().ifPresent(url -> consume(url + state));
         documents.status(DocumentToken.random());
     }
 
@@ -111,16 +125,22 @@ public final class ExportSurfaceProbe {
             call.run();
         } catch (EparagonyValidationException invalid) {
             invalid.errorCode().ifPresent(code -> consume(String.valueOf(code)));
-        } catch (EparagonyAuthException | EparagonyAccessDeniedException denied) {
-            consume(denied.getMessage());
         } catch (EparagonyServerException serverFailure) {
             consume(String.valueOf(serverFailure.requestMayHaveBeenApplied()));
         } catch (EparagonyException other) {
+            // Catches EparagonyAuthException and EparagonyAccessDeniedException too; they are subtypes,
+            // and a probe that only has to compile does not need to distinguish them.
             consume(other.getMessage());
         }
     }
 
+    /**
+     * Sinks a value so the compiler cannot elide the call that produced it. This class exists to
+     * compile, not to run; the parameter is consumed only to keep the reference live.
+     */
     private static void consume(String value) {
-        // Deliberately empty: this class exists to compile, not to run.
+        if (value != null && value.isEmpty()) {
+            throw new IllegalStateException("unreachable; keeps the argument from being optimized away");
+        }
     }
 }

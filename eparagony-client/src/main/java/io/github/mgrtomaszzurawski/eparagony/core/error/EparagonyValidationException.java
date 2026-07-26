@@ -35,7 +35,9 @@ public final class EparagonyValidationException extends EparagonyException {
 
     private static final long serialVersionUID = 1L;
 
-    private final transient Integer errorCode;
+    // NOT transient: Integer is serializable, and the code is the only machine-readable part of this
+    // failure. See EparagonyServerException for the same reasoning.
+    private final Integer errorCode;
 
     public EparagonyValidationException(String message, Integer errorCode) {
         super(message);
