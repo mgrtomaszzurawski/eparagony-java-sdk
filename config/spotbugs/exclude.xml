@@ -28,4 +28,16 @@
         <Package name="~io\.github\.mgrtomaszzurawski\.eparagony\.internal.*"/>
     </Match>
 
+    <!--
+        Records exposing a shared "empty" constant (ProductCodes.none(), ReceiptMetadata.none(),
+        ReceiptExtensions.none()) are read as the singleton pattern. They are not singletons: the
+        constant is one convenient instance of an immutable value type that callers are free to build
+        others of. A record's canonical constructor cannot be private, so the rule's remedy is not
+        available either.
+    -->
+    <Match>
+        <Bug pattern="SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR,SING_SINGLETON_IMPLEMENTS_SERIALIZABLE,SING_SINGLETON_GETTER_NOT_SYNCHRONIZED"/>
+        <Package name="~io\.github\.mgrtomaszzurawski\.eparagony\.domain\..*"/>
+    </Match>
+
 </FindBugsFilter>

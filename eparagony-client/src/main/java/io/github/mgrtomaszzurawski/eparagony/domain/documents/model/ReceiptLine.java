@@ -19,6 +19,9 @@ package io.github.mgrtomaszzurawski.eparagony.domain.documents.model;
 import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -28,8 +31,9 @@ import java.util.Objects;
  * violating either produces a {@code 400}: the line total must equal unit price times quantity, and
  * the payments must cover the sum of the lines.
  *
- * <p>Prices are the ones <em>before</em> any discount. Discounts are itemized separately — that is
- * what the tax authority expects to see, and it is also what lets the buyer see what they saved.
+ * <p>Prices are the ones <em>before</em> any discount. Discounts go in {@link #rebatesMarkups()} —
+ * that is what the tax authority expects to see, and it is also what lets the buyer see what they
+ * saved.
  *
  * @param productOrServiceName the name printed on the receipt. Registers truncate beyond roughly 40
  *     characters, silently.
@@ -38,8 +42,13 @@ import java.util.Objects;
  * @param totalLineValue the line total; must equal {@code unitPrice × quantity}
  * @param taxRate the register's VAT slot this item falls in
  * @param unitOfMeasure optional unit label, e.g. {@code "szt."}
- * @param ean optional EAN barcode
- * @param sku optional seller-internal stock code
+ * @param codes the product identifiers — EAN, SKU, PLU and the rest
+ * @param storno {@code true} when this line reverses an earlier one
+ * @param ticketRelief relief amount, for a transport ticket line
+ * @param rebatesMarkups discounts and surcharges applied to this line
+ * @param additionalDescription extra content printed beneath the line
+ * @param returnPolicy return terms for this product
+ * @param warranty warranty terms for this product
  */
 public record ReceiptLine(
         String productOrServiceName,
@@ -48,8 +57,13 @@ public record ReceiptLine(
         Amount totalLineValue,
         TaxRateCode taxRate,
         String unitOfMeasure,
-        String ean,
-        String sku) {
+        ProductCodes codes,
+        Boolean storno,
+        Integer ticketRelief,
+        List<RebateOrMarkup> rebatesMarkups,
+        List<AdditionalDescription> additionalDescription,
+        ReturnPolicy returnPolicy,
+        Warranty warranty) {
 
     public ReceiptLine {
         Objects.requireNonNull(productOrServiceName, "productOrServiceName");
@@ -63,6 +77,9 @@ public record ReceiptLine(
         if (quantity.signum() <= 0) {
             throw new IllegalArgumentException("quantity must be positive but was " + quantity);
         }
+        codes = codes == null ? ProductCodes.none() : codes;
+        rebatesMarkups = List.copyOf(Objects.requireNonNullElse(rebatesMarkups, List.of()));
+        additionalDescription = List.copyOf(Objects.requireNonNullElse(additionalDescription, List.of()));
     }
 
     /** Starts a line. */
@@ -70,26 +87,38 @@ public record ReceiptLine(
         return new Builder();
     }
 
+    /** The EAN, if one was supplied. Shorthand for {@code codes().ean()}. */
+    public String ean() {
+        return codes.ean();
+    }
 
-
+    /** The seller's stock code, if one was supplied. */
+    public String sku() {
+        return codes.sku();
+    }
 
     /** Builder for {@link ReceiptLine}. */
     public static final class Builder {
 
+        private final List<RebateOrMarkup> rebatesMarkups = new ArrayList<>();
+        private final List<AdditionalDescription> additionalDescription = new ArrayList<>();
+        private final ProductCodes.Builder codes = ProductCodes.builder();
         private String productOrServiceName;
         private BigDecimal quantity = BigDecimal.ONE;
         private Amount unitPrice;
         private Amount totalLineValue;
         private TaxRateCode taxRate;
         private String unitOfMeasure;
-        private String ean;
-        private String sku;
+        private Boolean storno;
+        private Integer ticketRelief;
+        private ReturnPolicy returnPolicy;
+        private Warranty warranty;
 
         private Builder() {
         }
 
-        public Builder productOrServiceName(String value) {
-            this.productOrServiceName = Objects.requireNonNull(value, "productOrServiceName");
+        public Builder productOrServiceName(String productName) {
+            this.productOrServiceName = Objects.requireNonNull(productName, "productOrServiceName");
             return this;
         }
 
@@ -126,13 +155,87 @@ public record ReceiptLine(
 
         /** Sets the EAN. Supply it when the source system has one — the API asks integrators to. */
         public Builder ean(String value) {
-            this.ean = Objects.requireNonNull(value, "ean");
+            codes.ean(Objects.requireNonNull(value, "ean"));
             return this;
         }
 
         /** Sets the seller's internal stock code. */
         public Builder sku(String value) {
-            this.sku = Objects.requireNonNull(value, "sku");
+            codes.sku(Objects.requireNonNull(value, "sku"));
+            return this;
+        }
+
+        /** Sets the register's price-lookup code. */
+        public Builder plu(String value) {
+            codes.plu(Objects.requireNonNull(value, "plu"));
+            return this;
+        }
+
+        /** Sets the Polish statistical classification code. */
+        public Builder pkwiu(String value) {
+            codes.pkwiu(Objects.requireNonNull(value, "pkwiu"));
+            return this;
+        }
+
+        /** Sets the Combined Nomenclature customs code. */
+        public Builder cn(String value) {
+            codes.cn(Objects.requireNonNull(value, "cn"));
+            return this;
+        }
+
+        /** Sets a DataMatrix code, where the goods carry one. */
+        public Builder dataMatrix(String value) {
+            codes.dataMatrix(Objects.requireNonNull(value, "dataMatrix"));
+            return this;
+        }
+
+        /** Sets an identifier from the seller's own system. */
+        public Builder externalId(String value) {
+            codes.externalId(Objects.requireNonNull(value, "externalId"));
+            return this;
+        }
+
+        /** Sets every product code at once. */
+        public Builder codes(ProductCodes value) {
+            Objects.requireNonNull(value, "codes");
+            codes.ean(value.ean()).sku(value.sku()).plu(value.plu()).pkwiu(value.pkwiu())
+                    .cn(value.cn()).dataMatrix(value.dataMatrix()).externalId(value.externalId());
+            return this;
+        }
+
+        /** Marks this line as reversing an earlier one. */
+        public Builder storno(boolean value) {
+            this.storno = value;
+            return this;
+        }
+
+        /** Relief amount, for a transport ticket line. */
+        public Builder ticketRelief(int value) {
+            this.ticketRelief = value;
+            return this;
+        }
+
+        /** Adds a discount or surcharge, itemized rather than folded into the price. */
+        public Builder addRebate(RebateOrMarkup rebate) {
+            rebatesMarkups.add(Objects.requireNonNull(rebate, "rebate"));
+            return this;
+        }
+
+        /** Adds a line of content printed beneath this item. */
+        public Builder addAdditionalDescription(AdditionalDescription description) {
+            additionalDescription.add(Objects.requireNonNull(description, "description"));
+            return this;
+        }
+
+        /** Sets the return terms printed for this product. */
+        public Builder returnPolicy(ReturnPolicy value) {
+            this.returnPolicy = Objects.requireNonNull(value, "returnPolicy");
+            return this;
+        }
+
+        /** Sets the warranty printed for this product. */
+        public Builder warranty(Warranty value) {
+            this.warranty = Objects.requireNonNull(value, "warranty");
             return this;
         }
 
@@ -140,18 +243,20 @@ public record ReceiptLine(
             Objects.requireNonNull(unitPrice, "unitPrice is required");
             Amount total = totalLineValue != null ? totalLineValue : computeTotal();
             return new ReceiptLine(productOrServiceName, quantity, unitPrice, total, taxRate,
-                    unitOfMeasure, ean, sku);
+                    unitOfMeasure, codes.build(), storno, ticketRelief,
+                    rebatesMarkups, additionalDescription, returnPolicy, warranty);
         }
 
         /**
-         * {@code unitPrice × quantity}, rejected unless it lands exactly on a grosz. A quantity such
-         * as {@code 0.333} against an odd unit price cannot be represented, and rounding it here would
-         * produce a line the server rejects for not reconciling — better to say so precisely.
+         * {@code unitPrice × quantity}, rejected unless it lands exactly on a grosz. Goods sold by
+         * weight are where this bites: 1.5 kg at 3.33 PLN/kg is 4.995 PLN, which no fiscal document
+         * can express. Rounding it silently would produce a line the server rejects for not
+         * reconciling.
          */
         private Amount computeTotal() {
             BigDecimal exact = BigDecimal.valueOf(unitPrice.grosze()).multiply(quantity);
             try {
-                return Amount.ofGrosze(exact.setScale(0, java.math.RoundingMode.UNNECESSARY).intValueExact());
+                return Amount.ofGrosze(exact.setScale(0, RoundingMode.UNNECESSARY).intValueExact());
             } catch (ArithmeticException notWhole) {
                 throw new IllegalArgumentException(
                         "unitPrice " + unitPrice + " times quantity " + quantity

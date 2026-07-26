@@ -45,7 +45,15 @@ public record ReceiptRequest(
         String merchantDocumentId,
         DocumentToken documentToken,
         TransactionToken transactionToken,
-        String statusUrl) {
+        String statusUrl,
+        ReceiptMetadata metadata,
+        ReceiptExtensions extensions,
+        List<PackageDeposit> packageReturns,
+        List<PackageDeposit> returnPackagesIssued,
+        List<AdvancePaymentSettlement> settlementAdvancePayment,
+        CurrencyConversion currencyExchange,
+        DutyFreeSale dutyFree,
+        List<AllegroDelivery> actions) {
 
     public ReceiptRequest {
         lines = List.copyOf(Objects.requireNonNull(lines, "lines"));
@@ -53,6 +61,13 @@ public record ReceiptRequest(
         Objects.requireNonNull(totalPaid, "totalPaid");
         Objects.requireNonNull(grossSaleValue, "grossSaleValue");
         Objects.requireNonNull(taxRates, "taxRates");
+        metadata = metadata == null ? ReceiptMetadata.none() : metadata;
+        extensions = extensions == null ? ReceiptExtensions.none() : extensions;
+        packageReturns = List.copyOf(Objects.requireNonNullElse(packageReturns, List.of()));
+        returnPackagesIssued = List.copyOf(Objects.requireNonNullElse(returnPackagesIssued, List.of()));
+        settlementAdvancePayment =
+                List.copyOf(Objects.requireNonNullElse(settlementAdvancePayment, List.of()));
+        actions = List.copyOf(Objects.requireNonNullElse(actions, List.of()));
         // The canonical constructor is public because records make it so. It must therefore enforce
         // the same invariants as the builder, or it becomes a documented-away back door around the
         // reconciliation this type exists to guarantee.
@@ -95,6 +110,14 @@ public record ReceiptRequest(
         private DocumentToken documentToken;
         private TransactionToken transactionToken;
         private String statusUrl;
+        private ReceiptMetadata metadata = ReceiptMetadata.none();
+        private ReceiptExtensions extensions = ReceiptExtensions.none();
+        private final List<PackageDeposit> packageReturns = new ArrayList<>();
+        private final List<PackageDeposit> returnPackagesIssued = new ArrayList<>();
+        private final List<AdvancePaymentSettlement> settlementAdvancePayment = new ArrayList<>();
+        private CurrencyConversion currencyExchange;
+        private DutyFreeSale dutyFree;
+        private final List<AllegroDelivery> actions = new ArrayList<>();
 
         private Builder() {
         }
@@ -181,6 +204,57 @@ public record ReceiptRequest(
             return this;
         }
 
+        /** Till, cashier, shift, order time and printed content. */
+        public Builder metadata(ReceiptMetadata value) {
+            this.metadata = Objects.requireNonNull(value, "metadata");
+            return this;
+        }
+
+        /** Loyalty movements, gift cards and document-wide return or warranty terms. */
+        public Builder extensions(ReceiptExtensions value) {
+            this.extensions = Objects.requireNonNull(value, "extensions");
+            return this;
+        }
+
+        /** Records returnable packaging the customer brought back. */
+        public Builder addPackageReturn(PackageDeposit deposit) {
+            packageReturns.add(Objects.requireNonNull(deposit, "deposit"));
+            return this;
+        }
+
+        /** Records returnable packaging issued to the customer. */
+        public Builder addReturnPackageIssued(PackageDeposit deposit) {
+            returnPackagesIssued.add(Objects.requireNonNull(deposit, "deposit"));
+            return this;
+        }
+
+        /** Applies an advance payment already taken against this sale. */
+        public Builder addAdvancePaymentSettlement(AdvancePaymentSettlement settlement) {
+            settlementAdvancePayment.add(Objects.requireNonNull(settlement, "settlement"));
+            return this;
+        }
+
+        /** Prints the total restated in another currency. Informational; the fiscal total is unchanged. */
+        public Builder currencyExchange(CurrencyConversion value) {
+            this.currencyExchange = Objects.requireNonNull(value, "currencyExchange");
+            return this;
+        }
+
+        /** Marks the sale duty-free and records the journey justifying it. */
+        public Builder dutyFree(DutyFreeSale value) {
+            this.dutyFree = Objects.requireNonNull(value, "dutyFree");
+            return this;
+        }
+
+        /**
+         * Asks eparagony.pl to deliver the issued receipt to Allegro. Runs asynchronously after
+         * issuance and reports through {@code documents().actions()}.
+         */
+        public Builder addAction(AllegroDelivery delivery) {
+            actions.add(Objects.requireNonNull(delivery, "delivery"));
+            return this;
+        }
+
         /** Where eparagony.pl should POST the fiscalization status notification. */
         public Builder statusUrl(String value) {
             this.statusUrl = Objects.requireNonNull(value, "statusUrl");
@@ -207,7 +281,8 @@ public record ReceiptRequest(
 
             return new ReceiptRequest(lines, payments, effectivePaid, change, effectiveGross, taxRates,
                     fiscalize, print, orderId, merchantDocumentId, documentToken, transactionToken,
-                    statusUrl);
+                    statusUrl, metadata, extensions, packageReturns, returnPackagesIssued,
+                    settlementAdvancePayment, currencyExchange, dutyFree, actions);
         }
 
         /**

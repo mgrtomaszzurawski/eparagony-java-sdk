@@ -61,6 +61,31 @@ environment and **self-skips when they are absent**. A skip is not a pass: check
 Credentials are supplied through those environment variables and never committed. Where they are
 stored is a deployment concern and deliberately not recorded in a public repository.
 
+## Field depth
+
+Endpoint coverage says which operations exist. It says nothing about how much of each payload the SDK
+can actually express, and a facade-method self-count cannot tell you either. A deterministic tool on
+the agent volume measures it: spec leaf fields as the denominator, mapper bytecode as the numerator.
+
+| Payload root | Mapped | Leaves | Depth |
+|---|---|---|---|
+| `CreateReceiptDocumentPayload` | 126 | 126 | **100%** |
+| `CreateGenericDocumentPayload` | 90 | 101 | 89% |
+| `CreateCorrectiveInvoiceDocumentPayload` | 11 | 13 | 85% |
+| `CreateTicketReceiptDocumentPayload` | 71 | 84 | 85% |
+| `CreateVatInvoiceDocumentPayload` | 74 | 158 | 47% |
+| `CreateSettlementInvoiceDocumentPayload` | 75 | 161 | 47% |
+| `CreateAdvancePaymentInvoiceDocumentPayload` | 70 | 155 | 45% |
+| response payloads (3) | 8 | 8 | 100% |
+| **total** | **525** | **806** | **65%** |
+
+An upper bound, deliberately reported as one: the generated Layer-1 classes are shared between
+document types, so a field mapped for a receipt counts wherever that same field appears. The receipt
+figure is the trustworthy one — it is the type with a hand-written builder for every leaf.
+
+The non-receipt document types have no domain builder yet. Their depth is what they inherit from the
+shared structures, not what a caller can actually set.
+
 ## Current coverage, honestly
 
 Instruction 80%, line 82%, branch 64%, method 80%, class 100%. No floor is enforced yet; a ratchet

@@ -17,19 +17,49 @@
 package io.github.mgrtomaszzurawski.eparagony.internal.client.documents;
 
 import io.github.mgrtomaszzurawski.eparagony.core.model.PosId;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.AdditionalDescription;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ContentLine;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.AdvancePaymentSettlement;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.AllegroDelivery;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PackageDeposit;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptExtensions;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentEntry;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ProductCodes;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.RebateOrMarkup;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReturnPolicy;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.Warranty;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRequest;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateCode;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateTable;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.AdditionalDescriptionLine;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.Content;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.ActionsInner;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.CurrencyExchange;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.DeliverViaAllegroAction;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.DutyFree;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.EReceiptCrkExtension;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.GiftCards;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.LoyaltyTransactionDetails;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.PackageReturn;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.SettlementAdvancePayment;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.KeyValueLine;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.LineWithBarcode;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.LineWithQRCode;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.SeparatorLine;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.TextLine;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.CreateReceiptDocumentPayload;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.RebatesMarkups;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.ProductReturnPolicy;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.PDReceipt;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.Payment;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.Payments;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.ReceiptLine;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.ReceiptLineProduct;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.ReceiptMetadata;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.ReceiptMetadataAllOfConsumerTIN;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.TaxRates;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,6 +71,9 @@ final class ReceiptRequestMapper {
 
     /** The only line kind this SDK issues so far; rebate lines are a separate {@code oneOf} branch. */
     private static final String LINE_TYPE_PRODUCT = "PRODUCT";
+
+    /** The only action type the API publishes. */
+    private static final String ACTION_DELIVER_VIA_ALLEGRO = "DELIVER_VIA_ALLEGRO";
 
     private ReceiptRequestMapper() {
     }
@@ -54,16 +87,124 @@ final class ReceiptRequestMapper {
         Optional.ofNullable(request.transactionToken())
                 .ifPresent(token -> payload.transactionToken(token.value()));
         Optional.ofNullable(request.statusUrl()).ifPresent(payload::statusUrl);
+        if (!request.actions().isEmpty()) {
+            payload.actions(request.actions().stream().map(ReceiptRequestMapper::toAction).toList());
+        }
         return payload;
     }
 
     private static PDReceipt toReceipt(ReceiptRequest request) {
-        return new PDReceipt()
+        PDReceipt receipt = new PDReceipt()
                 .fiscalize(request.fiscalize())
                 .print(request.print())
                 .metadata(toMetadata(request))
                 .lines(toLines(request))
                 .payment(toPayment(request));
+        applyNonFiscalContent(receipt, request);
+        return receipt;
+    }
+
+    /** Everything a receipt can carry beside its fiscal lines: deposits, advances, extras. */
+    private static void applyNonFiscalContent(PDReceipt receipt, ReceiptRequest request) {
+        if (!request.extensions().isEmpty()) {
+            receipt.extensions(toExtensions(request.extensions()));
+        }
+        if (!request.packageReturns().isEmpty()) {
+            receipt.packageReturns(request.packageReturns().stream()
+                    .map(ReceiptRequestMapper::toPackageReturn).toList());
+        }
+        if (!request.returnPackagesIssued().isEmpty()) {
+            receipt.returnPackagesIssued(request.returnPackagesIssued().stream()
+                    .map(ReceiptRequestMapper::toPackageReturn).toList());
+        }
+        if (!request.settlementAdvancePayment().isEmpty()) {
+            receipt.settlementAdvancePayment(request.settlementAdvancePayment().stream()
+                    .map(ReceiptRequestMapper::toAdvanceSettlement).toList());
+        }
+        Optional.ofNullable(request.currencyExchange()).ifPresent(conversion ->
+                receipt.currencyExchange(new CurrencyExchange()
+                        .currency(conversion.currency())
+                        .exchangeRate(conversion.exchangeRate().toPlainString())
+                        .afterConversion(conversion.afterConversion().grosze())));
+        Optional.ofNullable(request.dutyFree()).ifPresent(sale ->
+                receipt.dutyFree(new DutyFree().destination(sale.destination()).stops(sale.stops())));
+    }
+
+    private static EReceiptCrkExtension toExtensions(ReceiptExtensions extensions) {
+        EReceiptCrkExtension mapped = new EReceiptCrkExtension();
+        if (!extensions.consumerLoyalty().isEmpty()) {
+            mapped.consumerLoyalty(extensions.consumerLoyalty().stream()
+                    .map(ReceiptRequestMapper::toLoyaltyMovement).toList());
+        }
+        if (!extensions.giftCards().isEmpty()) {
+            mapped.giftCards(extensions.giftCards().stream()
+                    .map(card -> new GiftCards()
+                            .giftCardNo(card.giftCardNo())
+                            .giftCardValue(card.giftCardValue().grosze()))
+                    .toList());
+        }
+        extensions.recyclingDbIfPresent().ifPresent(mapped::recyclingDb);
+        extensions.globalReturnPolicyIfPresent().ifPresent(policy ->
+                mapped.globalReturnPolicy(toReturnPolicy(policy)));
+        extensions.warrantyIfPresent().ifPresent(terms -> mapped.warranty(toWarranty(terms)));
+        return mapped;
+    }
+
+    private static LoyaltyTransactionDetails toLoyaltyMovement(ReceiptExtensions.LoyaltyMovement move) {
+        LoyaltyTransactionDetails mapped = new LoyaltyTransactionDetails().id(move.id());
+        Optional.ofNullable(move.name()).ifPresent(mapped::name);
+        // The spec types point counts as strings, not numbers. Kept typed in the domain and rendered
+        // here, rather than pushing the API's choice onto the caller.
+        Optional.ofNullable(move.pointsAdded()).ifPresent(points ->
+                mapped.pointsAdded(String.valueOf(points)));
+        Optional.ofNullable(move.newBalance()).ifPresent(balance ->
+                mapped.newBalance(String.valueOf(balance)));
+        Optional.ofNullable(move.additionalContent()).ifPresent(content ->
+                mapped.additionalContent(toAdditionalContent(content)));
+        return mapped;
+    }
+
+    private static Content toAdditionalContent(ContentLine line) {
+        Content mapped = new Content();
+        line.bodyIfPresent().ifPresent(mapped::textLine);
+        return mapped;
+    }
+
+    private static PackageReturn toPackageReturn(PackageDeposit deposit) {
+        PackageReturn mapped = new PackageReturn()
+                .name(deposit.name())
+                .quantity(deposit.quantity())
+                .unitPrice(deposit.unitPrice().grosze())
+                .totalLineValue(deposit.totalLineValue().grosze());
+        deposit.packageNumberIfPresent().ifPresent(mapped::packageNumber);
+        Optional.ofNullable(deposit.codes().ean()).ifPresent(mapped::EAN);
+        Optional.ofNullable(deposit.codes().sku()).ifPresent(mapped::SKU);
+        Optional.ofNullable(deposit.codes().plu()).ifPresent(mapped::PLU);
+        Optional.ofNullable(deposit.codes().cn()).ifPresent(mapped::CN);
+        Optional.ofNullable(deposit.codes().dataMatrix()).ifPresent(mapped::dataMatrix);
+        Optional.ofNullable(deposit.codes().externalId()).ifPresent(mapped::externalId);
+        return mapped;
+    }
+
+    private static SettlementAdvancePayment toAdvanceSettlement(AdvancePaymentSettlement settlement) {
+        SettlementAdvancePayment mapped = new SettlementAdvancePayment()
+                .nameOfPayment(settlement.nameOfPayment())
+                .value(settlement.value().grosze())
+                .taxRate(SettlementAdvancePayment.TaxRateEnum.fromValue(settlement.taxRate().name()));
+        settlement.requiredAdditionalPaymentIfPresent().ifPresent(outstanding ->
+                mapped.requiredAdditionalPayment(outstanding.grosze()));
+        settlement.stornoIfPresent().ifPresent(mapped::isStorno);
+        return mapped;
+    }
+
+    private static ActionsInner toAction(AllegroDelivery delivery) {
+        DeliverViaAllegroAction action = new DeliverViaAllegroAction()
+                .type(ACTION_DELIVER_VIA_ALLEGRO)
+                .orderId(delivery.orderId());
+        delivery.accountIdIfPresent().ifPresent(action::accountId);
+        delivery.accountNameIfPresent().ifPresent(action::accountName);
+        delivery.actionStatusUrlIfPresent().ifPresent(url -> action.actionStatusUrl(URI.create(url)));
+        return new ActionsInner(action);
     }
 
     private static ReceiptMetadata toMetadata(ReceiptRequest request) {
@@ -72,7 +213,47 @@ final class ReceiptRequestMapper {
                 .taxRates(toTaxRates(request.taxRates()));
         Optional.ofNullable(request.orderId()).ifPresent(metadata::orderId);
         Optional.ofNullable(request.merchantDocumentId()).ifPresent(metadata::merchantDocumentId);
+        applyContext(metadata, request.metadata());
         return metadata;
+    }
+
+    private static void applyContext(ReceiptMetadata metadata,
+            io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptMetadata context) {
+        if (context == null || context.isEmpty()) {
+            return;
+        }
+        Optional.ofNullable(context.cashRegisterId()).ifPresent(metadata::cashRegisterId);
+        Optional.ofNullable(context.cashierId()).ifPresent(metadata::cashierId);
+        Optional.ofNullable(context.shiftId()).ifPresent(metadata::shiftId);
+        Optional.ofNullable(context.orderTime()).ifPresent(time -> metadata.orderTime(time.toString()));
+        Optional.ofNullable(context.currency()).ifPresent(metadata::currency);
+        // The spec models consumerTIN as a oneOf wrapper; its string branch is the one a receipt uses.
+        Optional.ofNullable(context.consumerTIN()).ifPresent(tin ->
+                metadata.consumerTIN(new ReceiptMetadataAllOfConsumerTIN(tin)));
+        if (!context.additionalDescription().isEmpty()) {
+            metadata.additionalDescription(context.additionalDescription().stream()
+                    .map(ReceiptRequestMapper::toDescriptionLine).toList());
+        }
+    }
+
+    /**
+     * Wraps a document content line into the {@code oneOf} the metadata block expects. Each shape has
+     * its own generated type, so the switch is the mapping, not a formality.
+     */
+    private static AdditionalDescriptionLine toDescriptionLine(ContentLine line) {
+        return switch (line.type()) {
+            case TEXT -> new AdditionalDescriptionLine(
+                    new TextLine().type(line.type().wireValue()).body(line.body()));
+            case KEY_VALUE -> new AdditionalDescriptionLine(new KeyValueLine()
+                    .type(line.type().wireValue()).key(line.key()).value(line.value()));
+            case BARCODE -> new AdditionalDescriptionLine(new LineWithBarcode()
+                    .type(LineWithBarcode.TypeEnum.fromValue(line.type().wireValue()))
+                    .body(line.body()));
+            case QR_CODE -> new AdditionalDescriptionLine(
+                    new LineWithQRCode().type(line.type().wireValue()).body(line.body()));
+            case SEPARATOR -> new AdditionalDescriptionLine(
+                    new SeparatorLine().type(line.type().wireValue()));
+        };
     }
 
     private static TaxRates toTaxRates(TaxRateTable table) {
@@ -101,9 +282,64 @@ final class ReceiptRequestMapper {
                 .totalLineValue(line.totalLineValue().grosze())
                 .taxRate(ReceiptLineProduct.TaxRateEnum.fromValue(line.taxRate().name()));
         Optional.ofNullable(line.unitOfMeasure()).ifPresent(product::unitOfMeasure);
-        Optional.ofNullable(line.ean()).ifPresent(product::EAN);
-        Optional.ofNullable(line.sku()).ifPresent(product::SKU);
+        applyCodes(product, line.codes());
+        Optional.ofNullable(line.storno()).ifPresent(product::isStorno);
+        Optional.ofNullable(line.ticketRelief()).ifPresent(product::ticketRelief);
+        Optional.ofNullable(line.returnPolicy()).ifPresent(policy ->
+                product.returnPolicy(toReturnPolicy(policy)));
+        Optional.ofNullable(line.warranty()).ifPresent(terms -> product.warranty(toWarranty(terms)));
+        if (!line.rebatesMarkups().isEmpty()) {
+            product.rebatesMarkups(line.rebatesMarkups().stream()
+                    .map(ReceiptRequestMapper::toRebate).toList());
+        }
+        if (!line.additionalDescription().isEmpty()) {
+            product.additionalDescription(line.additionalDescription().stream()
+                    .map(ReceiptRequestMapper::toAdditionalDescriptionLine).toList());
+        }
         return new ReceiptLine(product);
+    }
+
+    private static void applyCodes(ReceiptLineProduct product, ProductCodes codes) {
+        Optional.ofNullable(codes.ean()).ifPresent(product::EAN);
+        Optional.ofNullable(codes.sku()).ifPresent(product::SKU);
+        Optional.ofNullable(codes.plu()).ifPresent(product::PLU);
+        Optional.ofNullable(codes.pkwiu()).ifPresent(product::PKWIU);
+        Optional.ofNullable(codes.cn()).ifPresent(product::CN);
+        Optional.ofNullable(codes.dataMatrix()).ifPresent(product::dataMatrix);
+        Optional.ofNullable(codes.externalId()).ifPresent(product::externalId);
+    }
+
+    private static ProductReturnPolicy toReturnPolicy(ReturnPolicy policy) {
+        ProductReturnPolicy mapped = new ProductReturnPolicy();
+        policy.productReturnDaysIfStated().ifPresent(mapped::productReturnDays);
+        policy.inStoreReturnsOfferedIfStated().ifPresent(mapped::inStoreReturnsOffered);
+        policy.additionalDescriptionIfStated().ifPresent(mapped::additionalDescription);
+        return mapped;
+    }
+
+    private static io.github.mgrtomaszzurawski.eparagony.rest.model.Warranty toWarranty(
+            Warranty terms) {
+        io.github.mgrtomaszzurawski.eparagony.rest.model.Warranty mapped =
+                new io.github.mgrtomaszzurawski.eparagony.rest.model.Warranty();
+        terms.periodIfStated().ifPresent(mapped::period);
+        Optional.ofNullable(terms.periodUnit()).ifPresent(unit -> mapped.periodUnit(
+                io.github.mgrtomaszzurawski.eparagony.rest.model.Warranty.PeriodUnitEnum
+                        .fromValue(unit.wireValue())));
+        terms.dateToIfStated().ifPresent(date -> mapped.dateTo(date.toString()));
+        terms.additionalDescriptionIfStated().ifPresent(mapped::additionalDescription);
+        return mapped;
+    }
+
+    private static RebatesMarkups toRebate(RebateOrMarkup rebate) {
+        return new RebatesMarkups().name(rebate.name()).value(rebate.value().grosze());
+    }
+
+    private static Content toAdditionalDescriptionLine(AdditionalDescription line) {
+        Content mapped = new Content();
+        line.text().ifPresent(mapped::textLine);
+        Optional.ofNullable(line.graphicType()).ifPresent(mapped::graphicType);
+        line.graphic().ifPresent(mapped::graphicLine);
+        return mapped;
     }
 
     private static Payment toPayment(ReceiptRequest request) {
@@ -119,6 +355,15 @@ final class ReceiptRequestMapper {
                 .paymentForm(Payments.PaymentFormEnum.fromValue(entry.form().wireValue()))
                 .paidThisForm(entry.amount().grosze());
         Optional.ofNullable(entry.name()).ifPresent(payments::paymentName);
+        Optional.ofNullable(entry.giftCardNo()).ifPresent(payments::giftCardNo);
+        Optional.ofNullable(entry.giftCardValue()).ifPresent(value ->
+                payments.giftCardValue(value.grosze()));
+        Optional.ofNullable(entry.loyaltyCardNo()).ifPresent(payments::loyaltyCardNo);
+        Optional.ofNullable(entry.currency()).ifPresent(payments::currency);
+        Optional.ofNullable(entry.exchangeRate()).ifPresent(rate ->
+                payments.exchangeRate(rate.toPlainString()));
+        Optional.ofNullable(entry.cashInOriginalValue()).ifPresent(value ->
+                payments.cashInOriginalValue(value.grosze()));
         return payments;
     }
 }
