@@ -4,9 +4,9 @@ A typed Java 17 client for the [eparagony.pl](https://www.eparagony.pl) Document
 issuing Polish fiscal e-receipts through a registered cash register, and following what becomes of
 them.
 
-> **Pre-release.** The receipt path is built and verified against the live sandbox. Invoices,
-> corrections and the scope-gated endpoints are not implemented yet — see
-> [Supported surface](#supported-surface).
+> **Pre-release.** All seven endpoints are implemented; four are verified against the live sandbox and
+> three await scopes the sandbox account is not granted. Of the seven document *types*, only receipts
+> are mapped so far — see [Supported surface](#supported-surface).
 
 ## Why this exists
 
@@ -56,7 +56,7 @@ try (EparagonyClient client = EparagonyClient.of(EparagonyConfig.builder()
             .awaitTerminalStatus(issued.documentToken(), Duration.ofMinutes(3));
 
     if (status.isConfirmed()) {
-        emailReceiptLink(status.documentUrlIfPresent().orElseThrow());
+        emailReceiptLink(status.documentUrl().orElseThrow());
     }
 }
 ```
@@ -87,9 +87,22 @@ WebhookVerifier verifier = EparagonyClient.webhookVerifier(WebhookSecret.of(secr
 verifier.verify(rawBodyBytes, request.getHeader("X-Signature"));
 ```
 
+Better still, verify and parse in one step, so a payload cannot be read without its signature having
+been checked:
+
+```java
+WebhookNotifications notifications = EparagonyClient.webhookNotifications(WebhookSecret.of(secret));
+
+DocumentStatusNotification notification =
+        notifications.documentStatus(rawBodyBytes, request.getHeader("X-Signature"));
+```
+
 **Pass the body exactly as received.** Parsing the JSON and re-serializing it changes key order and
 whitespace, which changes the digest — the most common integration failure with this API, and the
 reason there is no `String` overload.
+
+Note that a webhook can report `READY`, which the polling endpoint never emits, and never reports
+`PENDING`, which polling does. The two channels do not share a status set.
 
 ## Supported surface
 
