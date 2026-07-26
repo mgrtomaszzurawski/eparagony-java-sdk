@@ -63,8 +63,8 @@ stored is a deployment concern and deliberately not recorded in a public reposit
 
 ## Current coverage, honestly
 
-Instruction 80%, line 79%, branch 65%, method 76%. No floor is enforced yet; a ratchet lands once the
-baseline has settled rather than being set to whatever today happens to be.
+Instruction 80%, line 82%, branch 64%, method 80%, class 100%. No floor is enforced yet; a ratchet
+lands once the baseline has settled rather than being set to whatever today happens to be.
 
 Live-verified: `POST /auth/token`, `POST /documents`, `GET /documents/{token}/status`,
 `GET /printers/{device}/status`.
