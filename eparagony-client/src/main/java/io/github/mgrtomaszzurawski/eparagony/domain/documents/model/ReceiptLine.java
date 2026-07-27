@@ -23,6 +23,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A single sold item on a receipt.
@@ -100,6 +101,16 @@ public record ReceiptLine(
     /** The seller's stock code, if one was supplied. */
     public String sku() {
         return codes.sku();
+    }
+
+    /** Whether this line reverses an earlier one. Empty when the caller did not say. */
+    public Optional<Boolean> stornoIfStated() {
+        return Optional.ofNullable(storno);
+    }
+
+    /** The ticket relief amount, when this is a transport ticket line. */
+    public Optional<Integer> ticketReliefIfStated() {
+        return Optional.ofNullable(ticketRelief);
     }
 
     /** Builder for {@link ReceiptLine}. */

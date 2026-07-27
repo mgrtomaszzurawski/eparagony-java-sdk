@@ -35,6 +35,7 @@ import io.github.mgrtomaszzurawski.eparagony.core.retry.RetryPolicy;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookSecret;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookVerifier;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.Documents;
+import io.github.mgrtomaszzurawski.eparagony.core.webhook.ActionStatusNotification;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.DocumentStatusNotification;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookNotifications;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentAction;
@@ -143,6 +144,10 @@ public final class ExportSurfaceProbe {
         DocumentStatusNotification notification =
                 notifications.documentStatus(rawBody, signatureHeader);
         consume(notification.status().state().name());
+
+        ActionStatusNotification actionNotification =
+                notifications.actionStatus(rawBody, signatureHeader);
+        consume(actionNotification.action().state().name());
     }
 
     /** Exercises the exception hierarchy a consumer is expected to catch. */

@@ -28,7 +28,6 @@ import java.util.Objects;
 public record DocumentAction(String actionId, ActionType type, ActionState state) {
 
     public DocumentAction {
-        Objects.requireNonNull(actionId, "actionId");
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(state, "state");
     }

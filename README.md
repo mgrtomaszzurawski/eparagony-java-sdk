@@ -101,8 +101,15 @@ DocumentStatusNotification notification =
 whitespace, which changes the digest — the most common integration failure with this API, and the
 reason there is no `String` overload.
 
-Note that a webhook can report `READY`, which the polling endpoint never emits, and never reports
-`PENDING`, which polling does. The two channels do not share a status set.
+There are two callbacks, not one: `documentStatus(...)` reads the fiscalization notification sent to
+`statusUrl`, and `actionStatus(...)` reads the per-action notification sent to `actionStatusUrl`. Both
+are signed with the same secret, so pick the parse by the URL you were reached on.
+
+A webhook can report `READY`, which the polling endpoint never emits, and never reports `PENDING`,
+which polling does. The two channels do not share a status set.
+
+**The signature proves origin, not freshness.** No timestamp, no nonce — a captured request replays
+and verifies. Make your handler idempotent and deduplicate on `documentToken` (or `actionId`).
 
 ## Supported surface
 

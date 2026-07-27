@@ -38,6 +38,16 @@ Nothing should require API credentials to check a signature.
 Comparison is constant-time via `MessageDigest.isEqual`. A byte-by-byte early exit leaks, through
 timing, how much of a guessed signature was correct.
 
+## What the signature does not prove
+
+Origin, not freshness. The notification carries no timestamp and no nonce, so a captured request
+replays perfectly and verifies perfectly. That is a property of the API, not of this SDK, and it
+cannot be fixed on the client side.
+
+Handlers must therefore be **idempotent**: deduplicate on `documentToken`, or on `actionId` for action
+notifications, and treat a repeat as the same event. A handler that emails the customer their receipt
+on every verified notification will email it again for every replay.
+
 ## Consequences
 
 - Consumers must capture the raw body themselves. This is a real burden in some frameworks, and it is

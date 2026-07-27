@@ -17,6 +17,7 @@
 package io.github.mgrtomaszzurawski.eparagony.core.webhook;
 
 import io.github.mgrtomaszzurawski.eparagony.EparagonyClient;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ActionType;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentState;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -113,6 +114,35 @@ class WebhookNotificationsTest {
 
         assertThrows(WebhookSignatureException.class,
                 () -> notifications.documentStatus(rawBody, null));
+    }
+
+    @Test
+    @DisplayName("verifies and parses an action status notification")
+    void parsesActionStatus() {
+        String body = """
+                {"documentToken":"11111111-2222-4333-8444-555555555555",
+                 "actionId":"ACT-1","type":"DELIVER_VIA_ALLEGRO","status":"COMPLETED"}
+                """;
+
+        ActionStatusNotification notification =
+                notifications.actionStatus(bytes(body), signature(body));
+
+        assertEquals("ACT-1", notification.action().actionId());
+        assertEquals(ActionType.DELIVER_VIA_ALLEGRO, notification.action().type());
+        assertTrue(notification.action().isCompleted());
+        assertEquals("11111111-2222-4333-8444-555555555555",
+                notification.documentTokenIfPresent().orElseThrow().value());
+    }
+
+    @Test
+    @DisplayName("refuses to parse an action notification whose signature does not match")
+    void refusesUnverifiedActionNotification() {
+        String body = "{\"actionId\":\"ACT-1\",\"status\":\"COMPLETED\"}";
+        String foreignSignature = signature("{\"actionId\":\"ACT-2\"}");
+        byte[] rawBody = bytes(body);
+
+        assertThrows(WebhookSignatureException.class,
+                () -> notifications.actionStatus(rawBody, foreignSignature));
     }
 
     private static byte[] bytes(String body) {

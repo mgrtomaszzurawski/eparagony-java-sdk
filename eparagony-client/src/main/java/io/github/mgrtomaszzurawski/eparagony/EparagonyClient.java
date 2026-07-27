@@ -28,6 +28,7 @@ import io.github.mgrtomaszzurawski.eparagony.internal.HttpRuntime;
 import io.github.mgrtomaszzurawski.eparagony.internal.JsonCodec;
 import io.github.mgrtomaszzurawski.eparagony.internal.ScopeGuard;
 import io.github.mgrtomaszzurawski.eparagony.internal.TokenManager;
+import io.github.mgrtomaszzurawski.eparagony.internal.client.documents.DocumentActionMapper;
 import io.github.mgrtomaszzurawski.eparagony.internal.client.documents.DocumentStatusMapper;
 import io.github.mgrtomaszzurawski.eparagony.internal.client.documents.DocumentsImpl;
 import io.github.mgrtomaszzurawski.eparagony.internal.client.printers.PrintersImpl;
@@ -149,6 +150,8 @@ public final class EparagonyClient implements AutoCloseable {
         JsonCodec codec = new JsonCodec();
         return new WebhookNotifications(new WebhookVerifier(secret),
                 rawBody -> DocumentStatusMapper.fromJson(
+                        codec.readTree(new String(rawBody, StandardCharsets.UTF_8))),
+                rawBody -> DocumentActionMapper.fromJson(
                         codec.readTree(new String(rawBody, StandardCharsets.UTF_8))));
     }
 

@@ -43,11 +43,17 @@ import java.util.function.Function;
  *     emailReceiptLink(notification.status().documentUrl().orElseThrow());
  * }
  * }</pre>
+ *
+ * <p><strong>A signature proves origin, not freshness.</strong> Nothing in the notification carries a
+ * timestamp or a nonce, so a captured request replays perfectly. Handlers must be idempotent —
+ * deduplicate on {@code documentToken}, or on {@code actionId} for action notifications — and must
+ * treat a repeat as the same event rather than a second one.
  */
 public final class WebhookNotifications {
 
     private final WebhookVerifier verifier;
     private final Function<byte[], DocumentStatus> parser;
+    private final Function<byte[], ActionStatusNotification> actionParser;
 
     /**
      * Assembled by {@code EparagonyClient.webhookNotifications(WebhookSecret)}, which is how you should
@@ -57,9 +63,11 @@ public final class WebhookNotifications {
      * <p>Supplying your own parser cannot weaken the guarantee: verification happens in
      * {@link #documentStatus} before the parser is ever consulted.
      */
-    public WebhookNotifications(WebhookVerifier verifier, Function<byte[], DocumentStatus> parser) {
+    public WebhookNotifications(WebhookVerifier verifier, Function<byte[], DocumentStatus> parser,
+            Function<byte[], ActionStatusNotification> actionParser) {
         this.verifier = Objects.requireNonNull(verifier, "verifier");
         this.parser = Objects.requireNonNull(parser, "parser");
+        this.actionParser = Objects.requireNonNull(actionParser, "actionParser");
     }
 
     /**
@@ -73,5 +81,19 @@ public final class WebhookNotifications {
     public DocumentStatusNotification documentStatus(byte[] rawBody, String signatureHeader) {
         verifier.verify(rawBody, signatureHeader);
         return new DocumentStatusNotification(parser.apply(rawBody));
+    }
+
+    /**
+     * Verifies and parses an action status notification — the one delivered to {@code actionStatusUrl},
+     * which is a different callback from the fiscalization one.
+     *
+     * <p>Both callbacks are signed with the same secret, so a handler serving one URL for both must
+     * decide which parse to run from the URL it was reached on, not from the payload.
+     *
+     * @throws WebhookSignatureException if the signature does not match; do not process the payload
+     */
+    public ActionStatusNotification actionStatus(byte[] rawBody, String signatureHeader) {
+        verifier.verify(rawBody, signatureHeader);
+        return actionParser.apply(rawBody);
     }
 }

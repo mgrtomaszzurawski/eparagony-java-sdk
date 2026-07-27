@@ -18,11 +18,13 @@ package io.github.mgrtomaszzurawski.eparagony.internal.client.printers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateCode;
+import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyException;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.DailyReport;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.DailyReportCounters;
 import io.github.mgrtomaszzurawski.eparagony.internal.JsonReader;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.EnumMap;
 import java.util.Map;
 
@@ -56,8 +58,16 @@ final class DailyReportMapper {
     }
 
     static DailyReport fromJson(JsonNode report) {
+        Instant issuedAt = JsonReader.instant(report, FIELD_ISSUED_AT);
+        if (issuedAt == null) {
+            // The spec types this as a bare string with no `format`, and the endpoint is scope-gated,
+            // so its real shape has never been seen on the wire. Say what arrived rather than letting
+            // the record's requireNonNull throw a bare NPE from inside a mapper.
+            throw new EparagonyException("Daily report is missing a readable issuedAt; the server sent "
+                    + describe(report.get(FIELD_ISSUED_AT)));
+        }
         return new DailyReport(
-                JsonReader.instant(report, FIELD_ISSUED_AT),
+                issuedAt,
                 JsonReader.instant(report, FIELD_SALE_FROM),
                 JsonReader.instant(report, FIELD_SALE_TO),
                 JsonReader.integerOr(report, FIELD_REPORT_NUMBER, ABSENT_COUNT),
@@ -69,6 +79,10 @@ final class DailyReportMapper {
                 JsonReader.decimal(report, FIELD_SALE_TOTAL),
                 JsonReader.decimal(report, FIELD_TAX_TOTAL),
                 counters(report));
+    }
+
+    private static String describe(JsonNode node) {
+        return node == null || node.isNull() ? "no value at all" : "\"" + node.asText() + "\"";
     }
 
     private static DailyReportCounters counters(JsonNode report) {

@@ -30,10 +30,15 @@ import java.util.UUID;
  */
 public record TransactionToken(String value) {
 
+    /** The shape the specification requires. Checked, because the Javadoc above promises it. */
+    private static final java.util.regex.Pattern UUID_SHAPE = java.util.regex.Pattern.compile(
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+
     public TransactionToken {
         Objects.requireNonNull(value, "value");
-        if (value.isBlank()) {
-            throw new IllegalArgumentException("transactionToken must not be blank");
+        if (!UUID_SHAPE.matcher(value).matches()) {
+            throw new IllegalArgumentException(
+                    "transactionToken must be a UUID but was \"" + value + "\"");
         }
     }
 
