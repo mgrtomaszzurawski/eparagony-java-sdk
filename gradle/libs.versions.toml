@@ -1,0 +1,24 @@
+# Version catalog. Single source of dependency + plugin versions for the reactor.
+[versions]
+openapiGenerator = "7.11.0"
+jackson = "2.18.2"
+jacksonNullable = "0.2.6"
+jakartaAnnotation = "2.1.1"
+junit = "5.11.4"
+wiremock = "3.10.0"
+
+[libraries]
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
+jackson-databind-nullable = { module = "org.openapitools:jackson-databind-nullable", version.ref = "jacksonNullable" }
+jakarta-annotation-api = { module = "jakarta.annotation:jakarta.annotation-api", version.ref = "jakartaAnnotation" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+# WireMock standalone (shaded) — used only in tests; the fat jar avoids transitive conflicts.
+wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
+
+[plugins]
+openapi-generator = { id = "org.openapi.generator", version.ref = "openapiGenerator" }
+spotless = { id = "com.diffplug.spotless", version = "6.25.0" }
+spotbugs = { id = "com.github.spotbugs", version = "6.0.26" }
+sonarqube = { id = "org.sonarqube", version = "6.0.1.5171" }

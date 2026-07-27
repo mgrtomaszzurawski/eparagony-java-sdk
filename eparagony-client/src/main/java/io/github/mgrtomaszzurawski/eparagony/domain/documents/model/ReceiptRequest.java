@@ -1,0 +1,439 @@
+/*
+ * eparagony-java-sdk — a typed Java client for the eparagony.pl Documents REST API.
+ * Copyright (C) 2026 Tomasz Zurawski
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU Affero General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option) any
+ * later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+ * PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along
+ * with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+package io.github.mgrtomaszzurawski.eparagony.domain.documents.model;
+
+import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
+import io.github.mgrtomaszzurawski.eparagony.core.model.DocumentToken;
+import io.github.mgrtomaszzurawski.eparagony.core.model.TransactionToken;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * A request to issue a fiscal e-receipt.
+ *
+ * <p>Build one with {@link #builder()}. The builder reconciles the amounts before the request leaves
+ * the process, against the same three rules the register applies:
+ *
+ * <ul>
+ *   <li>{@code grossSaleValue} equals the sum of the line contributions — including each line's own
+ *       discounts, which sit outside {@code totalLineValue}
+ *   <li>{@code totalPaid} equals the sum of the individual payments
+ *   <li>the till balances: {@code totalPaid − change == grossSaleValue − packageReturns
+ *       + returnPackagesIssued}. Not an inequality — a receipt paid more than it owes must say where
+ *       the difference went, and one whose customer returned packaging is paid <em>less</em> than it
+ *       sold.
+ * </ul>
+ *
+ * <p>eparagony.pl enforces all three and answers {@code 400}, the last of them with no message at
+ * all, so checking here turns a round trip and a bare error code into an exception naming the two
+ * figures that disagree.
+ */
+public record ReceiptRequest(
+        List<ReceiptLineItem> lines,
+        List<PaymentEntry> payments,
+        Amount totalPaid,
+        Amount change,
+        Amount grossSaleValue,
+        TaxRateTable taxRates,
+        boolean fiscalize,
+        boolean print,
+        String orderId,
+        String merchantDocumentId,
+        DocumentToken documentToken,
+        TransactionToken transactionToken,
+        String statusUrl,
+        ReceiptMetadata metadata,
+        ReceiptExtensions extensions,
+        List<PackageDeposit> packageReturns,
+        List<PackageDeposit> returnPackagesIssued,
+        List<AdvancePaymentSettlement> settlementAdvancePayment,
+        CurrencyConversion currencyExchange,
+        DutyFreeSale dutyFree,
+        List<AllegroDelivery> actions) {
+
+    /** Field names used in the reconciliation failures, so the message and the builder cannot drift. */
+    private static final String FIELD_TOTAL_PAID = "totalPaid";
+    private static final String FIELD_GROSS_SALE_VALUE = "grossSaleValue";
+
+    public ReceiptRequest {
+        lines = List.copyOf(Objects.requireNonNull(lines, "lines"));
+        payments = List.copyOf(Objects.requireNonNull(payments, "payments"));
+        Objects.requireNonNull(totalPaid, FIELD_TOTAL_PAID);
+        Objects.requireNonNull(grossSaleValue, FIELD_GROSS_SALE_VALUE);
+        Objects.requireNonNull(taxRates, "taxRates");
+        metadata = metadata == null ? ReceiptMetadata.none() : metadata;
+        extensions = extensions == null ? ReceiptExtensions.none() : extensions;
+        packageReturns = List.copyOf(Objects.requireNonNullElse(packageReturns, List.of()));
+        returnPackagesIssued = List.copyOf(Objects.requireNonNullElse(returnPackagesIssued, List.of()));
+        settlementAdvancePayment =
+                List.copyOf(Objects.requireNonNullElse(settlementAdvancePayment, List.of()));
+        actions = List.copyOf(Objects.requireNonNullElse(actions, List.of()));
+        // The canonical constructor is public because records make it so. It must therefore enforce
+        // the same invariants as the builder, or it becomes a documented-away back door around the
+        // reconciliation this type exists to guarantee.
+        if (lines.isEmpty()) {
+            throw new IllegalArgumentException("a receipt must have at least one line");
+        }
+        if (payments.isEmpty()) {
+            throw new IllegalArgumentException("a receipt must have at least one payment");
+        }
+        requireBalanced(totalPaid, change,
+                amountDue(grossSaleValue, packageReturns, returnPackagesIssued));
+        requireReconciled(grossSaleValue,
+                lines.stream().map(ReceiptLineItem::contributionToTotal).toList(),
+                FIELD_GROSS_SALE_VALUE, "the sum of the line contributions");
+        requireReconciled(totalPaid, payments.stream().map(PaymentEntry::amount).toList(),
+                FIELD_TOTAL_PAID, "the sum of the individual payments");
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /** Shared by the canonical constructor and the builder, so the two cannot drift apart. */
+    private static void requireReconciled(Amount declared, List<Amount> parts, String declaredName,
+            String computedName) {
+        int total = 0;
+        for (Amount part : parts) {
+            total = addAmounts(total, part);
+        }
+        if (declared.grosze() != total) {
+            throw new IllegalArgumentException(declaredName + " is " + declared + " but "
+                    + computedName + " is " + Amount.ofGrosze(total)
+                    + "; eparagony.pl rejects a receipt whose amounts do not reconcile");
+        }
+    }
+
+    /**
+     * The register's till equation: what was handed over, less what was handed back, must equal what
+     * was owed.
+     *
+     * <p>Not a "payments cover the sale" inequality. The server enforces equality and says so badly:
+     * an overpayment with no {@code change} declared is rejected at submission with a bare
+     * {@code 400 errorCode 87} and an empty message, whether or not any packaging is involved. That
+     * was confirmed by probing all four combinations. The builder derives {@code change} for a caller
+     * who does not set it, so the usual path cannot produce this failure at all.
+     */
+    private static void requireBalanced(Amount totalPaid, Amount change, Amount amountDue) {
+        int handedBack = change == null ? 0 : change.grosze();
+        int settled = subtractAmount(totalPaid.grosze(), handedBack);
+        if (settled != amountDue.grosze()) {
+            throw new IllegalArgumentException("totalPaid " + totalPaid + " less change "
+                    + Amount.ofGrosze(handedBack) + " settles " + Amount.ofGrosze(settled)
+                    + " but the amount due is " + amountDue
+                    + "; eparagony.pl rejects an unbalanced receipt with an empty error message");
+        }
+    }
+
+    /**
+     * What the customer actually hands over: the sale, less deposits refunded to them for packaging
+     * they brought back, plus deposits charged for packaging they took away.
+     *
+     * <p>Deposits never touch {@code grossSaleValue} — that stays the sum of the line contributions.
+     * They move the payment instead, and the server checks it: a receipt whose {@code totalPaid}
+     * ignores a {@code packageReturns} entry is rejected at submission with a bare
+     * {@code 400 errorCode 87} and no message at all. Confirmed by direct probe, both directions.
+     */
+    private static Amount amountDue(Amount grossSaleValue, List<PackageDeposit> packageReturns,
+            List<PackageDeposit> returnPackagesIssued) {
+        int dueAmount = grossSaleValue.grosze();
+        for (PackageDeposit refunded : packageReturns) {
+            dueAmount = subtractAmount(dueAmount, refunded.totalLineValue().grosze());
+        }
+        for (PackageDeposit charged : returnPackagesIssued) {
+            dueAmount = addAmounts(dueAmount, charged.totalLineValue());
+        }
+        return Amount.ofGrosze(dueAmount);
+    }
+
+    /**
+     * Adds with overflow translated into this class's own failure type. {@code Math.addExact} alone
+     * would surface an {@code ArithmeticException} from a builder whose every other arithmetic failure
+     * is an {@code IllegalArgumentException} naming the offending amount.
+     */
+    private static int addAmounts(int runningTotal, Amount part) {
+        try {
+            return Math.addExact(runningTotal, part.grosze());
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("the receipt total overflows past "
+                    + Amount.ofGrosze(Integer.MAX_VALUE) + " while adding " + part
+                    + "; amounts are grosze in a 32-bit integer", overflow);
+        }
+    }
+
+    /** The subtraction counterpart, so no arithmetic in this class escapes as {@code ArithmeticException}. */
+    private static int subtractAmount(int runningTotal, int part) {
+        try {
+            return Math.subtractExact(runningTotal, part);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("the receipt total overflows while subtracting "
+                    + Amount.ofGrosze(part) + " from " + Amount.ofGrosze(runningTotal)
+                    + "; amounts are grosze in a 32-bit integer", overflow);
+        }
+    }
+
+
+
+
+
+
+
+    /** Builder for {@link ReceiptRequest}. */
+    public static final class Builder {
+
+        private final List<ReceiptLineItem> lines = new ArrayList<>();
+        private final List<PaymentEntry> payments = new ArrayList<>();
+        private Amount totalPaid;
+        private Amount change;
+        private Amount grossSaleValue;
+        private TaxRateTable taxRates = TaxRateTable.standardPolish();
+        private boolean fiscalize = true;
+        private boolean print;
+        private String orderId;
+        private String merchantDocumentId;
+        private DocumentToken documentToken;
+        private TransactionToken transactionToken;
+        private String statusUrl;
+        private ReceiptMetadata metadata = ReceiptMetadata.none();
+        private ReceiptExtensions extensions = ReceiptExtensions.none();
+        private final List<PackageDeposit> packageReturns = new ArrayList<>();
+        private final List<PackageDeposit> returnPackagesIssued = new ArrayList<>();
+        private final List<AdvancePaymentSettlement> settlementAdvancePayment = new ArrayList<>();
+        private CurrencyConversion currencyExchange;
+        private DutyFreeSale dutyFree;
+        private final List<AllegroDelivery> actions = new ArrayList<>();
+
+        private Builder() {
+        }
+
+        public Builder addLine(ReceiptLine line) {
+            lines.add(Objects.requireNonNull(line, "line"));
+            return this;
+        }
+
+        /**
+         * Adds a standalone discount line — one that reduces the sale rather than a single product.
+         * Distinct from {@link ReceiptLine.Builder#addRebate}, which discounts one item.
+         */
+        public Builder addRebateLine(ReceiptRebateLine rebate) {
+            lines.add(Objects.requireNonNull(rebate, "rebate"));
+            return this;
+        }
+
+        public Builder lines(List<ReceiptLineItem> values) {
+            lines.clear();
+            lines.addAll(Objects.requireNonNull(values, "lines"));
+            return this;
+        }
+
+        public Builder addPayment(PaymentEntry payment) {
+            payments.add(Objects.requireNonNull(payment, "payment"));
+            return this;
+        }
+
+        /** Sets the total tendered. Omit it to have the payments summed. */
+        public Builder totalPaid(Amount value) {
+            this.totalPaid = Objects.requireNonNull(value, FIELD_TOTAL_PAID);
+            return this;
+        }
+
+        /** Change handed back, when any was. */
+        public Builder change(Amount value) {
+            this.change = Objects.requireNonNull(value, "change");
+            return this;
+        }
+
+        /** Sets the declared gross sale value. Omit it to have the line totals summed. */
+        public Builder grossSaleValue(Amount value) {
+            this.grossSaleValue = Objects.requireNonNull(value, FIELD_GROSS_SALE_VALUE);
+            return this;
+        }
+
+        /** The register's VAT slot configuration. Defaults to {@link TaxRateTable#standardPolish()}. */
+        public Builder taxRates(TaxRateTable value) {
+            this.taxRates = Objects.requireNonNull(value, "taxRates");
+            return this;
+        }
+
+        /**
+         * Whether the cash register should issue a fiscal document. Defaults to {@code true}, which is
+         * the point of the API; {@code false} produces a non-fiscal document only.
+         */
+        public Builder fiscalize(boolean value) {
+            this.fiscalize = value;
+            return this;
+        }
+
+        /** Whether the printer should also produce paper. Defaults to {@code false}. */
+        public Builder print(boolean value) {
+            this.print = value;
+            return this;
+        }
+
+        /** The order number the customer knows. Supply it wherever one exists — the API asks for it. */
+        public Builder orderId(String value) {
+            this.orderId = Objects.requireNonNull(value, "orderId");
+            return this;
+        }
+
+        /** The seller's own document number. */
+        public Builder merchantDocumentId(String value) {
+            this.merchantDocumentId = Objects.requireNonNull(value, "merchantDocumentId");
+            return this;
+        }
+
+        /** Fixes the document identifier instead of letting the server mint one. */
+        public Builder documentToken(DocumentToken value) {
+            this.documentToken = Objects.requireNonNull(value, "documentToken");
+            return this;
+        }
+
+        /**
+         * Ties this document to a transaction. Required when reissuing after a fiscalization error:
+         * keep the original transaction token and take a fresh {@link DocumentToken}.
+         */
+        public Builder transactionToken(TransactionToken value) {
+            this.transactionToken = Objects.requireNonNull(value, "transactionToken");
+            return this;
+        }
+
+        /** Till, cashier, shift, order time and printed content. */
+        public Builder metadata(ReceiptMetadata value) {
+            this.metadata = Objects.requireNonNull(value, "metadata");
+            return this;
+        }
+
+        /** Loyalty movements, gift cards and document-wide return or warranty terms. */
+        public Builder extensions(ReceiptExtensions value) {
+            this.extensions = Objects.requireNonNull(value, "extensions");
+            return this;
+        }
+
+        /** Records returnable packaging the customer brought back. */
+        public Builder addPackageReturn(PackageDeposit deposit) {
+            packageReturns.add(Objects.requireNonNull(deposit, "deposit"));
+            return this;
+        }
+
+        /** Records returnable packaging issued to the customer. */
+        public Builder addReturnPackageIssued(PackageDeposit deposit) {
+            returnPackagesIssued.add(Objects.requireNonNull(deposit, "deposit"));
+            return this;
+        }
+
+        /** Applies an advance payment already taken against this sale. */
+        public Builder addAdvancePaymentSettlement(AdvancePaymentSettlement settlement) {
+            settlementAdvancePayment.add(Objects.requireNonNull(settlement, "settlement"));
+            return this;
+        }
+
+        /** Prints the total restated in another currency. Informational; the fiscal total is unchanged. */
+        public Builder currencyExchange(CurrencyConversion value) {
+            this.currencyExchange = Objects.requireNonNull(value, "currencyExchange");
+            return this;
+        }
+
+        /** Marks the sale duty-free and records the journey justifying it. */
+        public Builder dutyFree(DutyFreeSale value) {
+            this.dutyFree = Objects.requireNonNull(value, "dutyFree");
+            return this;
+        }
+
+        /**
+         * Asks eparagony.pl to deliver the issued receipt to Allegro. Runs asynchronously after
+         * issuance and reports through {@code documents().actions()}.
+         */
+        public Builder addAction(AllegroDelivery delivery) {
+            actions.add(Objects.requireNonNull(delivery, "delivery"));
+            return this;
+        }
+
+        /** Where eparagony.pl should POST the fiscalization status notification. */
+        public Builder statusUrl(String value) {
+            this.statusUrl = Objects.requireNonNull(value, "statusUrl");
+            return this;
+        }
+
+        public ReceiptRequest build() {
+            if (lines.isEmpty()) {
+                throw new IllegalArgumentException("a receipt must have at least one line");
+            }
+            if (payments.isEmpty()) {
+                throw new IllegalArgumentException("a receipt must have at least one payment");
+            }
+            Amount linesTotal = sum(lines.stream().map(ReceiptLineItem::contributionToTotal).toList());
+            Amount paymentsTotal = sum(payments.stream().map(PaymentEntry::amount).toList());
+            Amount effectiveGross = grossSaleValue != null ? grossSaleValue : linesTotal;
+            Amount effectivePaid = totalPaid != null ? totalPaid : paymentsTotal;
+
+            // Against the amount due, not the sale: returned packaging refunds a deposit, so a
+            // perfectly valid receipt can be paid LESS than it sold. Checking against the sale here
+            // made every receipt carrying packageReturns unconstructible.
+            Amount dueAmount = amountDue(effectiveGross, packageReturns, returnPackagesIssued);
+            requireCovers(effectivePaid, dueAmount);
+            // Derived rather than demanded. The server wants totalPaid − change to equal the amount
+            // due exactly, and answers an unbalanced receipt with an empty message, so a caller who
+            // simply hands over more than the total should not have to know that.
+            // Left absent when it is zero, so an ordinary exact-payment receipt keeps the body it had
+            // rather than gaining a "change": 0 the register does not need.
+            Amount effectiveChange = change;
+            if (effectiveChange == null) {
+                int derivedChange = subtractAmount(effectivePaid.grosze(), dueAmount.grosze());
+                effectiveChange = derivedChange == 0 ? null : Amount.ofGrosze(derivedChange);
+            }
+
+            return new ReceiptRequest(lines, payments, effectivePaid, effectiveChange, effectiveGross,
+                    taxRates,
+                    fiscalize, print, orderId, merchantDocumentId, documentToken, transactionToken,
+                    statusUrl, metadata, extensions, packageReturns, returnPackagesIssued,
+                    settlementAdvancePayment, currencyExchange, dutyFree, actions);
+        }
+
+        /**
+         * Sums amounts, failing loudly on overflow.
+         *
+         * <p>{@code Math.addExact}, not {@code +}. Amounts are grosze in an {@code int}, so a total
+         * above 21 474 836.47 PLN wraps to a negative number — the declared gross value would go out
+         * negative and {@link #requireCovers} would then pass trivially, because any payment "covers"
+         * a negative sale. A receipt that large is a data error rather than a real transaction, and it
+         * should say so instead of silently producing a nonsensical document.
+         */
+        private static Amount sum(List<Amount> amounts) {
+            int total = 0;
+            for (Amount amount : amounts) {
+                try {
+                    total = Math.addExact(total, amount.grosze());
+                } catch (ArithmeticException overflow) {
+                    throw new IllegalArgumentException(
+                            "receipt amounts exceed what a fiscal document can represent "
+                                    + "(the running total overflowed at " + amount + ")", overflow);
+                }
+            }
+            return Amount.ofGrosze(total);
+        }
+
+
+        private static void requireCovers(Amount paid, Amount dueAmount) {
+            if (paid.grosze() < dueAmount.grosze()) {
+                throw new IllegalArgumentException("payments total " + paid
+                        + " but the amount due is " + dueAmount + "; the payments must cover it");
+            }
+        }
+    }
+}

@@ -1,11 +1,189 @@
 # eparagony-java-sdk
 
-Typed Java SDK for the [eparagony.pl](https://www.eparagony.pl) Documents REST API v3 — issuing
-Polish fiscal e-receipts and e-invoices (including KSeF submission) through a registered cash
-register.
+A typed Java 17 client for the [eparagony.pl](https://www.eparagony.pl) Documents REST API v3 —
+issuing Polish fiscal e-receipts through a registered cash register, and following what becomes of
+them.
 
-> Bootstrap in progress. Coordinates, usage and the supported surface land with the core PR.
+> **Pre-release.** All seven endpoints are implemented; four are verified against the live sandbox and
+> three await scopes the sandbox account is not granted. Of the seven document *types*, only receipts
+> are mapped so far — see [Supported surface](#supported-surface).
+
+## Why this exists
+
+The API is seven endpoints, which sounds like an afternoon's work. Three things make it not that, and
+this SDK exists to absorb all three:
+
+1. **Authentication is on a different host than the specification says**, and getting it wrong yields
+   a 404 with no explanation.
+2. **An unrecognised scope string returns HTTP 200 and a token that fails everywhere with a bare
+   `403 Access denied`.** The specification documents the scope separator incorrectly, so following
+   the documentation produces exactly this failure. The SDK refuses such a token and tells you which
+   scope is missing.
+3. **The document model is 118 schemas** of Polish fiscal law — VAT slot letters, amounts in grosze,
+   reconciliation rules the server enforces and the printer re-enforces.
+
+Everything learned the hard way is written down in
+[`docs/KNOWN-SERVER-BEHAVIORS.md`](docs/KNOWN-SERVER-BEHAVIORS.md).
+
+## Usage
+
+```java
+try (EparagonyClient client = EparagonyClient.of(EparagonyConfig.builder()
+        .environment(Environment.SANDBOX)
+        .credentials(new ClientCredentials(clientId, clientSecret))
+        .posId(PosId.of("my-shop"))
+        .scopes(Scope.DOCUMENT_CREATE)
+        .applicationUserAgent("MyShop/1.0 (+https://myshop.example)")
+        .build())) {
+
+    ReceiptRequest receipt = ReceiptRequest.builder()
+            .orderId("ORDER-2026-1183")
+            .addLine(ReceiptLine.builder()
+                    .productOrServiceName("Karma sucha dla psa 1 kg")
+                    .ean("05902560100679")
+                    .quantity(1)
+                    .unitPrice(Amount.ofZloty(new BigDecimal("100.00")))
+                    .taxRate(TaxRateCode.A)
+                    .build())
+            .addPayment(PaymentEntry.of(PaymentForm.CARD, Amount.ofGrosze(10000), "Visa"))
+            .statusUrl("https://myshop.example/webhooks/eparagony")
+            .build();
+
+    IssuedDocument issued = client.documents().issue(receipt);
+
+    // Preferred: wait for the webhook. This is the fallback when you have no public endpoint.
+    DocumentStatus status = client.documents()
+            .awaitTerminalStatus(issued.documentToken(), Duration.ofMinutes(3));
+
+    if (status.isConfirmed()) {
+        emailReceiptLink(status.documentUrl().orElseThrow());
+    }
+}
+```
+
+`applicationUserAgent` is mandatory: the API rejects a generic User-Agent, and the SDK rejects one
+before you find out over the wire.
+
+### Amounts
+
+The API takes integer **grosze**. `Amount` makes that impossible to get wrong:
+
+```java
+Amount.ofGrosze(10000)                        // 100.00 PLN
+Amount.ofZloty(new BigDecimal("100.00"))      // the same
+Amount.ofZloty(new BigDecimal("10.005"))      // throws — sub-grosz precision cannot be represented
+```
+
+The builder reconciles the document before it leaves your process. If the payments do not cover the
+lines, or the declared gross value disagrees with their sum, you get an exception naming both figures
+instead of an HTTP 400 carrying a numeric code.
+
+### Webhooks
+
+Verification needs no HTTP framework and no API credentials — just the raw bytes and the header:
+
+```java
+WebhookVerifier verifier = EparagonyClient.webhookVerifier(WebhookSecret.of(secret));
+verifier.verify(rawBodyBytes, request.getHeader("X-Signature"));
+```
+
+Better still, verify and parse in one step, so a payload cannot be read without its signature having
+been checked:
+
+```java
+WebhookNotifications notifications = EparagonyClient.webhookNotifications(WebhookSecret.of(secret));
+
+DocumentStatusNotification notification =
+        notifications.documentStatus(rawBodyBytes, request.getHeader("X-Signature"));
+```
+
+**Pass the body exactly as received.** Parsing the JSON and re-serializing it changes key order and
+whitespace, which changes the digest — the most common integration failure with this API, and the
+reason there is no `String` overload.
+
+There are two callbacks, not one: `documentStatus(...)` reads the fiscalization notification sent to
+`statusUrl`, and `actionStatus(...)` reads the per-action notification sent to `actionStatusUrl`. Both
+are signed with the same secret, so pick the parse by the URL you were reached on.
+
+A webhook can report `READY`, which the polling endpoint never emits, and never reports `PENDING`,
+which polling does. The two channels do not share a status set.
+
+**The signature proves origin, not freshness.** No timestamp, no nonce — a captured request replays
+and verifies. Make your handler idempotent and deduplicate on `documentToken` (or `actionId`).
+
+### Money rules the API gets counterintuitively right
+
+Three arithmetic rules cause most rejected receipts. The SDK applies all three for you, but they are
+worth knowing because the server's error messages for them range from cryptic to empty.
+
+**A rebate is a negative number.** `RebatesMarkups.value` and a `REBATE` line both read a *negative*
+value as a discount and a positive one as a surcharge. Use `RebateOrMarkup.rebate(...)` /
+`.markup(...)` and `ReceiptRebateLine.of(...)`, which take a magnitude and apply the sign.
+
+**Discounts reduce `grossSaleValue`, not `totalLineValue`.** A line total is defined as the value
+*before* discounts, so it never moves; the sale total carries them. This holds for a line's own
+`rebatesMarkups` as well as for standalone `REBATE` lines. Get it wrong and the server answers
+`400 errorCode 41`.
+
+**Returnable packaging moves the payment, not the sale.** A deposit never enters `grossSaleValue`.
+Packaging the customer brings back is refunded, so a valid receipt can be paid *less* than it sold;
+packaging handed out is charged. The register balances
+`totalPaid − change == grossSaleValue − returned + issued`, exactly — and rejects any imbalance with
+`400 errorCode 87` and **no message at all**. The builder derives `change` when you do not set it, so
+an ordinary overpayment cannot reach that error.
+
+```java
+ReceiptRequest deposit = ReceiptRequest.builder()
+        .addLine(bottleOfWater)                                  // 100.00
+        .addPackageReturn(PackageDeposit.of("Butelka", 1, 2, Amount.ofGrosze(100)))
+        .addPayment(PaymentEntry.of(PaymentForm.CARD, Amount.ofGrosze(9800)))
+        .build();                                                // 98.00 tendered, and correct
+```
+
+## Supported surface
+
+| Endpoint | Status |
+|---|---|
+| `POST /auth/token` | implemented, live-verified |
+| `POST /documents` — receipts | implemented, live-verified |
+| `GET /documents/{token}/status` | implemented, live-verified |
+| `GET /printers/{device}/status` | implemented, live-verified |
+| `GET /documents/{token}/actions/status` | implemented, contract-tested — scope not granted, so unverified live |
+| `GET /documents/{token}/jws` | implemented, contract-tested — scope not granted, so unverified live |
+| `GET /printers/{device}/reports/daily` | implemented, contract-tested — scope not granted, so unverified live |
+| Webhook verification and parsing | implemented, unit-tested (no public ingress to verify live) |
+| `POST /documents` — invoices, corrections, tickets | **not implemented** |
+
+All seven endpoints are implemented. The document *payload* is a separate seven-way `oneOf`, and only
+its receipt branch is mapped so far — the other six are generated in Layer 1 and waiting for a domain
+surface.
+
+## Requirements
+
+Java 17. Runtime dependencies: Jackson (`jackson-databind`, `jackson-datatype-jsr310`) and
+`org.openapitools:jackson-databind-nullable`, which the generated models require. Nothing else.
+
+## Building
+
+```bash
+./gradlew check                       # tests + Spotless, Checkstyle, PMD, SpotBugs, JaCoCo
+./gradlew :eparagony-client:e2eTest   # live sandbox; needs EPARAGONY_* env vars
+```
+
+See [`docs/TESTING.md`](docs/TESTING.md) for the conventions and honest coverage numbers.
+
+## Design
+
+Decisions are recorded in [`ADR/`](ADR/) and are immutable — superseded, never edited.
+
+- [ADR-001](ADR/ADR-001-generate-layer-1-from-the-vendored-spec.md) — generate Layer 1 from the vendored spec
+- [ADR-002](ADR/ADR-002-three-layers-and-jpms.md) — three layers, JPMS, Java 17
+- [ADR-003](ADR/ADR-003-authentication-and-the-scope-guard.md) — two hosts, lazy tokens, the scope guard
+- [ADR-004](ADR/ADR-004-exceptions-grouped-by-remediation.md) — exceptions grouped by remediation
+- [ADR-005](ADR/ADR-005-webhook-verification-is-transport-agnostic.md) — webhook verification takes raw bytes
+- [ADR-006](ADR/ADR-006-licence-agpl-3.0-only.md) — AGPL-3.0-only
 
 ## Licence
 
-AGPL-3.0-only. See `LICENSE.txt`.
+AGPL-3.0-only. See [`LICENSE.txt`](LICENSE.txt). Commercial use in a closed product requires a
+separate licence from the copyright holder.

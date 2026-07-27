@@ -1,0 +1,97 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+  Style gate for the hand-written SDK. Deliberately narrow: it enforces the rules the project has
+  actually agreed (see CLAUDE.md - code standards) rather than a vendor's full opinion set, so that
+  every violation reported is one somebody decided to care about.
+
+  Generated Layer 1 and module-info are excluded at the Gradle level.
+-->
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="error"/>
+    <property name="fileExtensions" value="java"/>
+
+    <!-- Tabs make indentation depend on the reader's editor settings. -->
+    <module name="FileTabCharacter"/>
+
+    <module name="LineLength">
+        <property name="max" value="120"/>
+        <!-- URLs and import statements cannot be wrapped meaningfully. -->
+        <property name="ignorePattern" value="^package .*|^import .*|https?://|@see|\{@link"/>
+    </module>
+
+    <module name="TreeWalker">
+
+        <!-- Naming. The project bans 1-3 character names outside loop counters and catch blocks;
+             see the PMD ruleset, which enforces the length rule with the agreed exceptions. -->
+        <module name="PackageName">
+            <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+        </module>
+        <module name="TypeName"/>
+        <module name="MethodName"/>
+        <module name="ConstantName"/>
+        <module name="LocalVariableName"/>
+        <module name="MemberName"/>
+        <module name="ParameterName"/>
+
+        <!-- Imports. -->
+        <module name="UnusedImports"/>
+        <module name="RedundantImport"/>
+        <module name="AvoidStarImport"/>
+        <!-- The generated Layer 1 must never be reachable from a public signature; this catches the
+             import even before the JPMS gate catches the export. -->
+        <module name="IllegalImport">
+            <property name="illegalPkgs" value="sun,com.sun"/>
+        </module>
+
+        <!-- Braces and blocks. A missing brace is how a one-line if grows a second statement that
+             silently is not part of it. -->
+        <module name="NeedBraces"/>
+        <module name="LeftCurly"/>
+        <module name="RightCurly"/>
+        <module name="EmptyBlock">
+            <property name="option" value="text"/>
+        </module>
+        <module name="EmptyStatement"/>
+
+        <!-- Correctness. -->
+        <module name="EqualsHashCode"/>
+        <module name="StringLiteralEquality"/>
+        <module name="MissingSwitchDefault"/>
+        <module name="FallThrough"/>
+        <module name="SimplifyBooleanExpression"/>
+        <module name="SimplifyBooleanReturn"/>
+        <module name="IllegalCatch">
+            <property name="illegalClassNames" value="java.lang.Throwable,java.lang.Error"/>
+        </module>
+
+        <!-- Whitespace. -->
+        <module name="WhitespaceAfter"/>
+        <module name="WhitespaceAround">
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+            <property name="allowEmptyTypes" value="true"/>
+            <property name="allowEmptyLambdas" value="true"/>
+        </module>
+        <module name="NoWhitespaceBefore"/>
+        <module name="GenericWhitespace"/>
+
+        <!-- Modifier order, so declarations read the same everywhere. -->
+        <module name="ModifierOrder"/>
+        <module name="RedundantModifier"/>
+
+        <!-- Javadoc on the public surface. The project's rule is that a public API whose name does
+             not carry its meaning must be documented; an empty or malformed Javadoc is worse than
+             none, so the format is checked where one exists. -->
+        <module name="JavadocStyle">
+            <property name="scope" value="public"/>
+            <property name="checkFirstSentence" value="true"/>
+            <property name="checkEmptyJavadoc" value="true"/>
+        </module>
+        <module name="NonEmptyAtclauseDescription"/>
+    </module>
+</module>
