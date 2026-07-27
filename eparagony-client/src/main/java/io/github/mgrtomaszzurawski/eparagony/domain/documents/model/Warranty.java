@@ -38,9 +38,9 @@ public record Warranty(Integer period, PeriodUnit periodUnit, LocalDate dateTo,
     public enum PeriodUnit {
         DAY, MONTH, YEAR;
 
-        /** The literal the API expects, lower-case. */
+        /** The literal the API expects. Upper-case, matching the constant name. */
         public String wireValue() {
-            return name().toLowerCase(java.util.Locale.ROOT);
+            return name();
         }
     }
 

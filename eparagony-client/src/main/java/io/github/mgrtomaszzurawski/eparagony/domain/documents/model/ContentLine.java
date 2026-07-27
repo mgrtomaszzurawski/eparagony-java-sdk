@@ -25,45 +25,49 @@ import java.util.Optional;
  *
  * <p>Five shapes, one type, because that is how the API models it: a {@code oneOf} discriminated on
  * {@code type}. The factory methods are the whole public surface, so an invalid combination — a
- * separator with a body, a QR code without one — cannot be constructed.
+ * separator with a body, a key-value line without a key — cannot be constructed.
+ *
+ * <p>The barcode case is the one worth reading. There is no {@code "BARCODE"} discriminator: the
+ * {@code type} <em>is</em> the symbology, one of nineteen values from {@code EAN13} to
+ * {@code PHARMACODE}. {@link #barcode(BarcodeSymbology, String)} therefore takes the symbology rather
+ * than defaulting to one, because a receipt printed with the wrong symbology scans as the wrong
+ * number or does not scan at all.
  *
  * <p>This is not the same thing as a product line's {@code additionalDescription}, which is a simpler
  * text-or-graphic pair. The API distinguishes them and so does the SDK.
  *
- * @param type which shape this line takes
- * @param key the label, for a {@link Type#KEY_VALUE} line
- * @param value the value, for a {@link Type#KEY_VALUE} line
+ * @param type the discriminator this line carries, which for a barcode is its symbology
+ * @param key the label, for a key-value line
+ * @param value the value, for a key-value line
  * @param body the content, for text, barcode and QR lines
  */
-public record ContentLine(Type type, String key, String value, String body) {
+public record ContentLine(String type, String key, String value, String body) {
 
-    /** The kinds of line a document's printed content can contain. */
-    public enum Type {
+    /** The discriminator for a plain text line. */
+    public static final String TYPE_TEXT = "TEXT";
 
-        /** Free text. */
-        TEXT("TEXT"),
+    /** The discriminator for a QR code. Note {@code QR}, not {@code QR_CODE}. */
+    public static final String TYPE_QR = "QR";
 
-        /** A labelled value, printed as a pair. */
-        KEY_VALUE("KEY_VALUE"),
+    /** The discriminator for a horizontal rule. */
+    public static final String TYPE_SEPARATOR = "SEPARATOR";
 
-        /** A barcode rendered from {@code body}. */
-        BARCODE("BARCODE"),
+    /** The discriminator for a labelled value. */
+    public static final String TYPE_KEY_VALUE = "KEY_VALUE";
 
-        /** A QR code rendered from {@code body}. */
-        QR_CODE("QR_CODE"),
-
-        /** A horizontal rule. Carries nothing else. */
-        SEPARATOR("SEPARATOR");
-
-        private final String wireValue;
-
-        Type(String wireValue) {
-            this.wireValue = wireValue;
-        }
+    /**
+     * The barcode symbologies the API accepts. The chosen value travels as the line's {@code type};
+     * there is no separate "this is a barcode" marker.
+     */
+    public enum BarcodeSymbology {
+        CODE39, CODE128, CODE128A, CODE128B, CODE128C,
+        EAN13, EAN8, EAN5, EAN2, UPC,
+        ITF14, ITF, MSI, MSI10, MSI11, MSI1010, MSI1110,
+        PHARMACODE, CODABAR;
 
         /** The literal the API expects in the {@code type} discriminator. */
         public String wireValue() {
-            return wireValue;
+            return name();
         }
     }
 
@@ -73,28 +77,45 @@ public record ContentLine(Type type, String key, String value, String body) {
 
     /** A line of free text. */
     public static ContentLine text(String body) {
-        return new ContentLine(Type.TEXT, null, null, requireContent(body, "body"));
+        return new ContentLine(TYPE_TEXT, null, null, requireContent(body, "body"));
     }
 
     /** A labelled value, e.g. {@code "Numer zamówienia"} / {@code "ORDER-1183"}. */
     public static ContentLine keyValue(String key, String value) {
-        return new ContentLine(Type.KEY_VALUE, requireContent(key, "key"),
+        return new ContentLine(TYPE_KEY_VALUE, requireContent(key, "key"),
                 requireContent(value, "value"), null);
     }
 
-    /** A barcode rendered from {@code body}. */
-    public static ContentLine barcode(String body) {
-        return new ContentLine(Type.BARCODE, null, null, requireContent(body, "body"));
+    /**
+     * A barcode in the given symbology. Pick the one the reader on the other end expects — an EAN
+     * printed as {@code CODE128} is not the same barcode.
+     */
+    public static ContentLine barcode(BarcodeSymbology symbology, String body) {
+        Objects.requireNonNull(symbology, "symbology");
+        return new ContentLine(symbology.wireValue(), null, null, requireContent(body, "body"));
     }
 
-    /** A QR code rendered from {@code body} — a loyalty link, a survey, a return form. */
+    /**
+     * A QR code. A body in URL form is additionally rendered as a link — which is what makes this the
+     * natural place for a returns form or a loyalty account.
+     */
     public static ContentLine qrCode(String body) {
-        return new ContentLine(Type.QR_CODE, null, null, requireContent(body, "body"));
+        return new ContentLine(TYPE_QR, null, null, requireContent(body, "body"));
     }
 
     /** A horizontal rule. */
     public static ContentLine separator() {
-        return new ContentLine(Type.SEPARATOR, null, null, null);
+        return new ContentLine(TYPE_SEPARATOR, null, null, null);
+    }
+
+    /** {@code true} when this line's {@code type} is one of the barcode symbologies. */
+    public boolean isBarcode() {
+        for (BarcodeSymbology symbology : BarcodeSymbology.values()) {
+            if (symbology.wireValue().equals(type)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public Optional<String> keyIfPresent() {

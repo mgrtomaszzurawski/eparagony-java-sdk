@@ -65,10 +65,10 @@ produces that report, so running `check` then `sonar` is the correct order.
 | Gate | Result |
 |---|---|
 | Spotless / Checkstyle / PMD / SpotBugs | 0 violations |
-| JUnit (unit + contract) | 497 tests, 0 skipped, 0 failures |
-| JaCoCo | instruction 83%, line 84%, class 100% |
+| JUnit (unit + contract) | 498 tests, 0 skipped, 0 failures |
+| JaCoCo | instruction 83%, line 84%, method 83%, class 95% |
 | Live sandbox `e2eTest` | 3 tests, **0 skipped**, 0 failures |
-| SonarQube | 0 bugs, 0 vulnerabilities, 0 hotspots, 0 open smells, A/A/A |
+| SonarQube | 0 bugs, 0 vulnerabilities, 0 hotspots, 0 open smells, coverage 77%, A/A/A |
 
 Two Sonar findings carry a recorded decision rather than a fix, and both are visible on the board with
 their justification: the retry loop's multiple `continue` statements (marked won't-fix — collapsing
@@ -104,12 +104,20 @@ An upper bound, deliberately reported as one: the generated Layer-1 classes are 
 document types, so a field mapped for a receipt counts wherever that same field appears. The receipt
 figure is the trustworthy one — it is the type with a hand-written builder for every leaf.
 
+**A depth figure alone is not enough, and `FullReceiptPayloadTest` is why.** The tool measures that a
+mapper *invokes* each Layer-1 setter; it cannot see whether the value handed to it is one the server
+accepts. That test pins the full wire body of a receipt using every optional structure, and on its
+first run it caught three mappings the depth number had already scored as covered: the QR
+discriminator is `QR` and not `QR_CODE`, a barcode line has no `BARCODE` type at all (the symbology
+*is* the type, one of nineteen), and warranty period units are upper-case. Any payload work on the
+remaining document types needs the same pinned-body test beside it.
+
 The non-receipt document types have no domain builder yet. Their depth is what they inherit from the
 shared structures, not what a caller can actually set.
 
 ## Current coverage, honestly
 
-Instruction 80%, line 82%, branch 64%, method 80%, class 100%. No floor is enforced yet; a ratchet
+Instruction 83%, line 84%, branch 63%, method 83%, class 95%. No floor is enforced yet; a ratchet
 lands once the baseline has settled rather than being set to whatever today happens to be.
 
 Live-verified: `POST /auth/token`, `POST /documents`, `GET /documents/{token}/status`,

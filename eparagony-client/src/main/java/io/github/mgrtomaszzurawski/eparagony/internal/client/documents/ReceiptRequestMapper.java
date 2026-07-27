@@ -237,23 +237,30 @@ final class ReceiptRequestMapper {
     }
 
     /**
-     * Wraps a document content line into the {@code oneOf} the metadata block expects. Each shape has
-     * its own generated type, so the switch is the mapping, not a formality.
+     * Wraps a document content line into the {@code oneOf} the metadata block expects.
+     *
+     * <p>Dispatched on the discriminator rather than on a Java enum, because the barcode branch has no
+     * single discriminator of its own — the symbology IS the type, so nineteen distinct values all map
+     * to the same generated shape.
      */
     private static AdditionalDescriptionLine toDescriptionLine(ContentLine line) {
-        return switch (line.type()) {
-            case TEXT -> new AdditionalDescriptionLine(
-                    new TextLine().type(line.type().wireValue()).body(line.body()));
-            case KEY_VALUE -> new AdditionalDescriptionLine(new KeyValueLine()
-                    .type(line.type().wireValue()).key(line.key()).value(line.value()));
-            case BARCODE -> new AdditionalDescriptionLine(new LineWithBarcode()
-                    .type(LineWithBarcode.TypeEnum.fromValue(line.type().wireValue()))
-                    .body(line.body()));
-            case QR_CODE -> new AdditionalDescriptionLine(
-                    new LineWithQRCode().type(line.type().wireValue()).body(line.body()));
-            case SEPARATOR -> new AdditionalDescriptionLine(
-                    new SeparatorLine().type(line.type().wireValue()));
-        };
+        if (ContentLine.TYPE_TEXT.equals(line.type())) {
+            return new AdditionalDescriptionLine(new TextLine().type(line.type()).body(line.body()));
+        }
+        if (ContentLine.TYPE_QR.equals(line.type())) {
+            return new AdditionalDescriptionLine(
+                    new LineWithQRCode().type(line.type()).body(line.body()));
+        }
+        if (ContentLine.TYPE_SEPARATOR.equals(line.type())) {
+            return new AdditionalDescriptionLine(new SeparatorLine().type(line.type()));
+        }
+        if (ContentLine.TYPE_KEY_VALUE.equals(line.type())) {
+            return new AdditionalDescriptionLine(new KeyValueLine()
+                    .type(line.type()).key(line.key()).value(line.value()));
+        }
+        return new AdditionalDescriptionLine(new LineWithBarcode()
+                .type(LineWithBarcode.TypeEnum.fromValue(line.type()))
+                .body(line.body()));
     }
 
     private static TaxRates toTaxRates(TaxRateTable table) {

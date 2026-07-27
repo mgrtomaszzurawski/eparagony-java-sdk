@@ -131,7 +131,7 @@
         The project's naming rule: no 1-3 character names. The allowed exceptions are loop counters,
         the catch-block binding, established domain abbreviations that name exactly the thing they
         abbreviate, and specification field names carried through verbatim (the daily report's `tax`,
-        the tax-rate slot letters A-G, the `JWS` payload field).
+        the tax-rate slot letters A-G, the `JWS` payload field, the barcode symbologies UPC/ITF/MSI).
     -->
     <rule ref="category/java/codestyle.xml/ShortVariable">
         <properties>
@@ -143,7 +143,8 @@
                              or @Name='A' or @Name='B' or @Name='C' or @Name='D'
                              or @Name='E' or @Name='F' or @Name='G'
                              or @Name='tax' or @Name='JWS' or @Name='key' or @Name='plu'
-                             or @Name='cn' or @Name='DAY' or @Name='tin']"/>
+                             or @Name='cn' or @Name='DAY' or @Name='tin'
+                             or @Name='UPC' or @Name='ITF' or @Name='MSI']"/>
         </properties>
     </rule>
 </ruleset>
