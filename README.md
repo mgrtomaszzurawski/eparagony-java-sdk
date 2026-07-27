@@ -111,6 +111,35 @@ which polling does. The two channels do not share a status set.
 **The signature proves origin, not freshness.** No timestamp, no nonce — a captured request replays
 and verifies. Make your handler idempotent and deduplicate on `documentToken` (or `actionId`).
 
+### Money rules the API gets counterintuitively right
+
+Three arithmetic rules cause most rejected receipts. The SDK applies all three for you, but they are
+worth knowing because the server's error messages for them range from cryptic to empty.
+
+**A rebate is a negative number.** `RebatesMarkups.value` and a `REBATE` line both read a *negative*
+value as a discount and a positive one as a surcharge. Use `RebateOrMarkup.rebate(...)` /
+`.markup(...)` and `ReceiptRebateLine.of(...)`, which take a magnitude and apply the sign.
+
+**Discounts reduce `grossSaleValue`, not `totalLineValue`.** A line total is defined as the value
+*before* discounts, so it never moves; the sale total carries them. This holds for a line's own
+`rebatesMarkups` as well as for standalone `REBATE` lines. Get it wrong and the server answers
+`400 errorCode 41`.
+
+**Returnable packaging moves the payment, not the sale.** A deposit never enters `grossSaleValue`.
+Packaging the customer brings back is refunded, so a valid receipt can be paid *less* than it sold;
+packaging handed out is charged. The register balances
+`totalPaid − change == grossSaleValue − returned + issued`, exactly — and rejects any imbalance with
+`400 errorCode 87` and **no message at all**. The builder derives `change` when you do not set it, so
+an ordinary overpayment cannot reach that error.
+
+```java
+ReceiptRequest deposit = ReceiptRequest.builder()
+        .addLine(bottleOfWater)                                  // 100.00
+        .addPackageReturn(PackageDeposit.of("Butelka", 1, 2, Amount.ofGrosze(100)))
+        .addPayment(PaymentEntry.of(PaymentForm.CARD, Amount.ofGrosze(9800)))
+        .build();                                                // 98.00 tendered, and correct
+```
+
 ## Supported surface
 
 | Endpoint | Status |

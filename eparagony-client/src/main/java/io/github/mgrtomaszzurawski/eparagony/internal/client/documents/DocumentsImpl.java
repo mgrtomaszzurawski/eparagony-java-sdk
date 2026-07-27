@@ -65,6 +65,7 @@ public final class DocumentsImpl implements Documents {
 
     /** {@code 202} means the data was accepted and the register is still working. */
     private static final int HTTP_ACCEPTED = 202;
+    private static final int MAX_ECHOED_DETAIL_LENGTH = 200;
 
     /** How long to wait between status polls. Fiscalization takes seconds, not milliseconds. */
     private static final Duration POLL_INTERVAL = Duration.ofSeconds(2);
@@ -200,12 +201,15 @@ public final class DocumentsImpl implements Documents {
                     required(root, FIELD_DOCUMENT_PUBLIC_URL),
                     required(root, FIELD_DOCUMENT_STATUS_URL),
                     response.statusCode() == HTTP_ACCEPTED);
-        } catch (IllegalArgumentException malformed) {
+        } catch (IllegalArgumentException | EparagonyException unmodellable) {
+            // Both arms, not just the malformed one: a REQUIRED field the server stopped sending is
+            // the same situation as one it garbled — the sale is fiscalized and the caller is holding
+            // an exception. Only the "may have been applied" flag keeps them from reissuing it.
             throw new EparagonyServerException(
                     "The document was accepted but the server's response could not be modelled: "
-                            + malformed.getMessage()
+                            + truncate(unmodellable.getMessage())
                             + ". Do not reissue — that would fiscalize the sale twice.",
-                    malformed, true);
+                    unmodellable, true);
         }
     }
 
@@ -214,6 +218,17 @@ public final class DocumentsImpl implements Documents {
      * sending one of these, that is a contract violation and it should be loud rather than silently
      * producing a document record with a hole in it.
      */
+    /** Bounds and de-newlines a message that quotes a server-supplied value. */
+    private static String truncate(String message) {
+        if (message == null) {
+            return "(no detail)";
+        }
+        String flattened = message.replace('\r', ' ').replace('\n', ' ');
+        return flattened.length() <= MAX_ECHOED_DETAIL_LENGTH
+                ? flattened
+                : flattened.substring(0, MAX_ECHOED_DETAIL_LENGTH) + "...";
+    }
+
     private static String required(JsonNode root, String field) {
         JsonNode node = root.get(field);
         if (node == null || !node.isTextual() || node.asText().isBlank()) {

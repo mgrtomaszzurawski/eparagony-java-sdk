@@ -44,6 +44,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -129,7 +130,7 @@ class DailyReportsTest {
         DailyReport report = printers(Scope.REPORT_FISCAL_GET)
                 .dailyReports(FiscalDeviceUniqueNumber.of(DEVICE), null, null).get(0);
 
-        assertTrue(!report.counters().hasAnomalies());
+        assertFalse(report.counters().hasAnomalies());
     }
 
     @Test

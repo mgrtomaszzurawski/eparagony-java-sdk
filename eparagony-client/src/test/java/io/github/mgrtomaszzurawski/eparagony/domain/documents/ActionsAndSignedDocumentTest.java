@@ -45,6 +45,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -101,7 +102,7 @@ class ActionsAndSignedDocumentTest {
         assertTrue(actions.get(0).isCompleted());
         // PENDING is endpoint-only; the webhook never sends it, and it is not terminal.
         assertEquals(ActionState.PENDING, actions.get(1).state());
-        assertTrue(!actions.get(1).state().isTerminal());
+        assertFalse(actions.get(1).state().isTerminal());
         assertTrue(actions.get(2).state().isTerminal());
     }
 

@@ -207,7 +207,7 @@ class FullReceiptPayloadTest {
                             }
                           ],
                           "totalPaid": 10000,
-                          "change": 1000
+                          "change": 700
                         },
                         "extensions": {
                           "recyclingDb": "BDO-12345",
@@ -260,7 +260,7 @@ class FullReceiptPayloadTest {
                         "currencyExchange": {
                           "currency": "EUR",
                           "exchangeRate": "4.30",
-                          "afterConversion": 2326
+                          "afterConversion": 2093
                         },
                         "dutyFree": {
                           "destination": "Berlin",
@@ -327,7 +327,10 @@ class FullReceiptPayloadTest {
                 .addPayment(PaymentEntry.builder(PaymentForm.VOUCHER, Amount.ofGrosze(4000))
                         .giftCard("GC-1", Amount.ofGrosze(4000))
                         .build())
-                .change(Amount.ofGrosze(1000))
+                // Deliberately not set: the builder derives it. Sale 9000, less a 200 deposit refunded
+                // for returned bottles, plus a 500 deposit charged for the crate, is 9300 due against
+                // 10000 tendered — so change must be 700, and the pinned body says 700.
+
                 .extensions(ReceiptExtensions.builder()
                         .recyclingDb("BDO-12345")
                         .addLoyaltyMovement(ReceiptExtensions.LoyaltyMovement
@@ -349,7 +352,9 @@ class FullReceiptPayloadTest {
                                         .externalId("EXT-BOTTLE").build()))
                 .addReturnPackageIssued(PackageDeposit.of("Skrzynka", 7, 1, Amount.ofGrosze(500)))
                 .currencyExchange(new CurrencyConversion("EUR", new BigDecimal("4.30"),
-                        Amount.ofGrosze(2326)))
+                        // Informational only, and the server does not check it — but a fixture that
+                        // corresponds to nothing on the receipt reads as a typo. 9000 gr at 4.30.
+                        Amount.ofGrosze(2093)))
                 .dutyFree(DutyFreeSale.to("Berlin", List.of("Poznan", "Frankfurt (Oder)")))
                 .addAction(AllegroDelivery.forOrder("ALLEGRO-77")
                         .identifiedAs("ACT-1")

@@ -30,6 +30,7 @@ import io.github.mgrtomaszzurawski.eparagony.domain.documents.Documents;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentState;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentStatus;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.IssuedDocument;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PackageDeposit;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentEntry;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentForm;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.RebateOrMarkup;
@@ -83,6 +84,10 @@ class SandboxLiveTest {
     private static final int RECEIPT_TOTAL_GROSZE = 10000;
     private static final int LINE_REBATE_GROSZE = 300;
     private static final int STANDALONE_REBATE_GROSZE = 100;
+    private static final int DEPOSIT_UNIT_PRICE_GROSZE = 100;
+    private static final int DEPOSIT_QUANTITY = 2;
+    private static final int DEPOSIT_TOTAL_GROSZE =
+            DEPOSIT_UNIT_PRICE_GROSZE * DEPOSIT_QUANTITY;
 
     @Test
     @DisplayName("issues a receipt and follows it through to CONFIRMED")
@@ -127,6 +132,28 @@ class SandboxLiveTest {
         // arithmetic matches the register's rather than merely matching its own mock.
         try (EparagonyClient client = client(Scope.DOCUMENT_CREATE)) {
             IssuedDocument issued = client.documents().issue(discountedReceipt(orderId));
+
+            DocumentStatus status = client.documents()
+                    .awaitTerminalStatus(issued.documentToken(), FISCALIZATION_TIMEOUT);
+
+            assertEquals(DocumentState.CONFIRMED, status.state());
+            assertEquals(orderId, status.orderId().orElseThrow());
+        }
+    }
+
+    @Test
+    @DisplayName("fiscalizes a receipt with a returned-packaging deposit")
+    void issuesReceiptWithPackageDeposit() {
+        assumeCredentials();
+        String orderId = "SDK-E2E-PKG-" + UUID.randomUUID().toString().substring(0, 8);
+
+        // Returned packaging refunds a deposit, so this receipt is legitimately paid LESS than it
+        // sold: 100.00 sold, 2.00 refunded, 98.00 tendered. The SDK used to require payments to cover
+        // the sale, which made this exact document unconstructible. The server is the only authority
+        // on the rule — it rejects the mis-settled version with a bare 400 errorCode 87 and no
+        // message, so a WireMock stub asserting our own arithmetic would have proved nothing.
+        try (EparagonyClient client = client(Scope.DOCUMENT_CREATE)) {
+            IssuedDocument issued = client.documents().issue(depositReceipt(orderId));
 
             DocumentStatus status = client.documents()
                     .awaitTerminalStatus(issued.documentToken(), FISCALIZATION_TIMEOUT);
@@ -217,6 +244,27 @@ class SandboxLiveTest {
                 .addPayment(PaymentEntry.of(PaymentForm.CARD,
                         Amount.ofGrosze(RECEIPT_TOTAL_GROSZE - LINE_REBATE_GROSZE
                                 - STANDALONE_REBATE_GROSZE), "Visa"))
+                .build();
+    }
+
+    /** A sale of {@code RECEIPT_TOTAL_GROSZE} against which a returned bottle's deposit is refunded. */
+    private static ReceiptRequest depositReceipt(String orderId) {
+        return ReceiptRequest.builder()
+                .orderId(orderId)
+                .merchantDocumentId(orderId)
+                .fiscalize(true)
+                .print(false)
+                .addLine(ReceiptLine.builder()
+                        .productOrServiceName("Woda zrodlana 0.5l")
+                        .unitOfMeasure("szt.")
+                        .quantity(1)
+                        .unitPrice(Amount.ofGrosze(RECEIPT_TOTAL_GROSZE))
+                        .taxRate(TaxRateCode.A)
+                        .build())
+                .addPackageReturn(PackageDeposit.of("Butelka zwrotna 0.5l", 1, DEPOSIT_QUANTITY,
+                        Amount.ofGrosze(DEPOSIT_UNIT_PRICE_GROSZE)))
+                .addPayment(PaymentEntry.of(PaymentForm.CARD,
+                        Amount.ofGrosze(RECEIPT_TOTAL_GROSZE - DEPOSIT_TOTAL_GROSZE), "Visa"))
                 .build();
     }
 

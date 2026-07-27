@@ -137,9 +137,8 @@ Refused with `400 invalid_scope`: `document_action_get`, `document_get_jws`, `re
 - **Loyalty `pointsAdded` and `newBalance` are strings**, and the specification's own examples are
   fractional (`-20.98`, `1234.56`).
 - **`PackageReturn` requires `packageNumber` and not `name`** — the reverse of what the field names
-  suggest. Note also that the vendor's own example for this schema contradicts the schema three ways
-  (`productOrServiceName` instead of `name`, a string `quantity`, no `packageNumber`), so this one
-  wants a live probe before it is trusted in production.
+  suggest. The vendor's own example contradicts the schema three ways; the schema is the one that
+  matches the server. Probed, see the section above.
 
 ## `grossSaleValue` must net BOTH discount mechanisms, and the server checks
 
@@ -150,14 +149,18 @@ A receipt can reduce the sale two ways: `rebatesMarkups` attached to a product l
 already inside `totalLineValue` — the specification defines that field as the gross value "before
 applying any markups and discounts", so it never moves.
 
-Same shape, one product line of 10000 carrying a `-300` line rebate plus a `-100` standalone rebate
-line, posted three ways:
+Two payloads, three submissions. The first row is the specification's own worked example sent
+verbatim; rows two and three are one payload — a product line of 10000 carrying a `-300` line rebate
+plus a `-100` standalone rebate line — submitted with the two competing totals:
 
-| Declared `grossSaleValue` | Reading | Result |
-|---|---|---|
-| 9802 (the spec's own worked example) | both count | **202** → `CONFIRMED` |
-| 9600 | both count | **202** → `CONFIRMED` |
-| 9900 | only the `REBATE` line counts | **400** `{"errorCode":41,"message":"Incorrectly calculated value of 'eReceipt.metadata.grossSaleValue'"}` |
+| Payload | Declared `grossSaleValue` | Reading | Result |
+|---|---|---|---|
+| spec example: 9802 line, `+100` markup, `-100` rebate line | 9802 | both count | **202** → `CONFIRMED` |
+| 10000 line, `-300` line rebate, `-100` rebate line | 9600 | both count | **202** → `CONFIRMED` |
+| the same payload as above | 9900 | only the `REBATE` line counts | **400** `{"errorCode":41,"message":"Incorrectly calculated value of 'eReceipt.metadata.grossSaleValue'"}` |
+
+The rows are not interchangeable: the server enforces equality, so one payload has exactly one
+acceptable total. Rows two and three prove that; row one shows the vendor's own example obeys it.
 
 This is one of the few places the sandbox validates arithmetic rather than rubber-stamping it, so it
 is worth knowing that a mistake here fails loudly at submission rather than silently at the register.
@@ -170,6 +173,53 @@ Note the asymmetry with invoices, which is what makes the receipt rule easy to g
 `FullInvoiceLine.totalLineValue` *may* already include its rebates, governed by
 `rebatesMarkups.includedInTotalLineValue`. That flag exists on the invoice line and not on the receipt
 line precisely because a receipt's discounts always sit outside the line total.
+
+## `errorCode 87` is the till equation, and it arrives with an empty message
+
+*Confirmed 2026-07-27 by direct probe — eight receipts across every combination.*
+
+The server requires **`totalPaid − change == grossSaleValue − packageReturns + returnPackagesIssued`**,
+exactly. Break it and the response is `400 {"errorCode":87}` with **no `message` field at all** — the
+only validation failure observed on this API that names nothing.
+
+| Payment | `change` | Packaging | Result |
+|---|---|---|---|
+| exact | — | none | **202** |
+| overpaid by 500 | — | none | **400 errorCode 87** |
+| overpaid by 500 | `500` | none | **202** |
+| sale 10000, paid 10000 | — | 200 returned | **400 errorCode 87** |
+| sale 10000, paid 9800 | — | 200 returned | **202** |
+| sale 10000, paid 10200 | — | 200 returned | **400 errorCode 87** |
+| sale 10000, paid 10200 | — | 200 issued | **202** |
+| overpaid by 500 | `500` | 200 returned | **202** |
+
+Two consequences that are easy to get backwards:
+
+- **A deposit never enters `grossSaleValue`.** Adding it earns `errorCode 41` instead. Packaging moves
+  the *payment*, not the sale.
+- **`packageReturns` is packaging the customer brought back, so it is refunded** — a perfectly valid
+  receipt is then paid *less* than it sold. `returnPackagesIssued` is packaging handed to the customer
+  and is charged. An SDK that requires payments to cover the sale cannot express the first case at all.
+
+The SDK derives `change` when the caller does not set it, precisely so the ordinary overpayment path
+cannot reach an error whose message is empty.
+
+## The `PackageReturn` schema is right and the vendor's own example is wrong
+
+*Confirmed 2026-07-27.*
+
+The schema and the example beside it disagree three ways. The server sides with the schema:
+
+| Sent | Response |
+|---|---|
+| `packageNumber` omitted (as the example does) | `400 errorCode 41` — `"eReceipt.packageReturns[0].packageNumber" is required` |
+| `productOrServiceName` instead of `name` (as the example does) | same — `packageNumber` is missing, so it never reaches the name |
+| `"quantity": "2"` as a string (as the example does) | `400 errorCode 41` — `"eReceipt.packageReturns[0].quantity" must be a number` |
+| the schema shape, correctly settled | **202** |
+
+So `packageNumber` is genuinely required despite reading like an optional label, `name` is genuinely
+optional, and `quantity` is an integer here while it is a *string* on a product line. This one no
+longer needs the caveat it used to carry.
 
 ## Observed timings
 

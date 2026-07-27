@@ -17,6 +17,7 @@
 package io.github.mgrtomaszzurawski.eparagony.domain.documents;
 
 import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PackageDeposit;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentEntry;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentForm;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.RebateOrMarkup;
@@ -32,6 +33,7 @@ import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -123,6 +125,79 @@ class ReceiptRequestBuilderTest {
                 .build();
 
         assertEquals(500, request.change().grosze());
+    }
+
+    @Test
+    @DisplayName("derives the change when the caller overpays without declaring it")
+    void derivesChangeOnOverpayment() {
+        // The server rejects totalPaid > amountDue with no change declared, and says only
+        // "errorCode 87" with an empty message. Deriving it means the caller cannot reach that.
+        ReceiptRequest request = ReceiptRequest.builder()
+                .addLine(line(Amount.ofGrosze(9500)))
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(10000)))
+                .build();
+
+        assertEquals(500, request.change().grosze());
+    }
+
+    @Test
+    @DisplayName("leaves change absent on an exact payment rather than sending a zero")
+    void omitsZeroChange() {
+        ReceiptRequest request = ReceiptRequest.builder()
+                .addLine(line(Amount.ofGrosze(10000)))
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(10000)))
+                .build();
+
+        assertNull(request.change());
+    }
+
+    @Test
+    @DisplayName("subtracts a returned-packaging deposit from the amount due")
+    void refundsReturnedPackagingDeposit() {
+        // Packaging the customer brings back is refunded, so a valid receipt is paid LESS than it
+        // sold. Requiring payments to cover the sale made this unconstructible; the server accepts
+        // exactly this shape and rejects the covering one.
+        ReceiptRequest request = ReceiptRequest.builder()
+                .addLine(line(Amount.ofGrosze(10000)))
+                .addPackageReturn(deposit(200))
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(9800)))
+                .build();
+
+        assertEquals(10000, request.grossSaleValue().grosze());
+        assertEquals(9800, request.totalPaid().grosze());
+    }
+
+    @Test
+    @DisplayName("adds an issued-packaging deposit to the amount due")
+    void chargesIssuedPackagingDeposit() {
+        ReceiptRequest request = ReceiptRequest.builder()
+                .addLine(line(Amount.ofGrosze(10000)))
+                .addReturnPackageIssued(deposit(500))
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(10500)))
+                .build();
+
+        assertEquals(10000, request.grossSaleValue().grosze());
+        assertEquals(10500, request.totalPaid().grosze());
+    }
+
+    @Test
+    @DisplayName("rejects a receipt whose payment ignores the packaging deposit")
+    void rejectsUnbalancedPackagingDeposit() {
+        ReceiptRequest.Builder request = ReceiptRequest.builder()
+                .addLine(line(Amount.ofGrosze(10000)))
+                .addPackageReturn(deposit(200))
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(10000)))
+                .change(Amount.ofGrosze(0));
+
+        IllegalArgumentException failure =
+                assertThrows(IllegalArgumentException.class, request::build);
+
+        assertTrue(failure.getMessage().contains("98.00 PLN"),
+                "the message must name the amount due, but said: " + failure.getMessage());
+    }
+
+    private static PackageDeposit deposit(int grosze) {
+        return PackageDeposit.of("Butelka zwrotna 0.5l", 1, 1, Amount.ofGrosze(grosze));
     }
 
     @Test

@@ -50,10 +50,16 @@ public final class JsonReader {
         return value != null && value.isTextual() && !value.asText().isBlank() ? value.asText() : null;
     }
 
-    /** An integer field, or {@code null} when absent or not a number. */
+    /**
+     * An integer field, or {@code null} when absent or not an integer that fits.
+     *
+     * <p>{@code canConvertToInt}, not {@code isNumber}: {@code asInt()} silently truncates a
+     * fractional value and saturates one that overflows, so a counter of {@code 3.9} would read as 3
+     * and a nonsensical one would read as {@link Integer#MAX_VALUE}. Absent is the honest answer.
+     */
     public static Integer integer(JsonNode node, String field) {
         JsonNode value = node.get(field);
-        return value != null && value.isNumber() ? value.asInt() : null;
+        return value != null && value.isNumber() && value.canConvertToInt() ? value.asInt() : null;
     }
 
     /**

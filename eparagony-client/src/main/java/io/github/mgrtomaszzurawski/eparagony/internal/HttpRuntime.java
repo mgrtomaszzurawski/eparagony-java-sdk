@@ -256,14 +256,16 @@ public final class HttpRuntime {
         }
         try {
             long seconds = Long.parseLong(header.get().trim());
-            // Bounded, not just non-negative. This value is handed to the caller on
-            // EparagonyRateLimitException, and the obvious thing to do with it is
-            // Thread.sleep(retryAfter().toMillis()) — which throws ArithmeticException for a Duration
-            // near Long.MAX_VALUE. A wait of more than a day is not an instruction anyone can act on,
-            // so it is treated as unusable rather than propagated as a number that breaks arithmetic.
-            return seconds >= 0 && seconds <= MAX_PLAUSIBLE_RETRY_AFTER_SECONDS
-                    ? Duration.ofSeconds(seconds)
-                    : null;
+            if (seconds < 0) {
+                return null;
+            }
+            // Clamped, not dropped. Returning null for an out-of-range value would route around
+            // RetryPolicy's own 120 s ceiling — the SDK would answer a server asking for an hour by
+            // retrying in a few seconds, which is the opposite of what the header means, and
+            // retryAfter() would then tell the caller the server gave no guidance at all. Clamping
+            // keeps the floor honest in the direction that matters and still bounds the Duration, so
+            // the obvious consumer idiom Thread.sleep(retryAfter().toMillis()) cannot overflow.
+            return Duration.ofSeconds(Math.min(seconds, MAX_PLAUSIBLE_RETRY_AFTER_SECONDS));
         } catch (NumberFormatException notAnInteger) {
             // The HTTP-date form is legal but not honored as a floor; fall back to computed backoff.
             return null;

@@ -57,6 +57,7 @@ public final class DocumentStatusMapper {
     private static final String FIELD_DOCUMENT_URL = "documentUrl";
     private static final String FIELD_ERROR_MESSAGE = "errorMessage";
     private static final String FIELD_MESSAGE = "message";
+    private static final int MAX_ECHOED_DETAIL_LENGTH = 200;
 
     private DocumentStatusMapper() {
     }
@@ -110,9 +111,15 @@ public final class DocumentStatusMapper {
      */
     private static EparagonyServerException malformedToken(String field,
             IllegalArgumentException cause) {
+        // The cause's message quotes the offending value, so it is truncated here like every other
+        // echoed server string, and line breaks are stripped so one bad field cannot forge log lines.
+        String detail = cause.getMessage() == null ? "" : cause.getMessage()
+                .replace('\r', ' ').replace('\n', ' ');
+        if (detail.length() > MAX_ECHOED_DETAIL_LENGTH) {
+            detail = detail.substring(0, MAX_ECHOED_DETAIL_LENGTH) + "...";
+        }
         return new EparagonyServerException(
-                "Server sent a '" + field + "' this SDK cannot model: " + cause.getMessage(),
-                cause, false);
+                "Server sent a '" + field + "' this SDK cannot model: " + detail, cause, false);
     }
 
     private static FiscalDeviceUniqueNumber fiscalDevice(JsonNode root) {

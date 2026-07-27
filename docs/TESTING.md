@@ -65,9 +65,9 @@ produces that report, so running `check` then `sonar` is the correct order.
 | Gate | Result |
 |---|---|
 | Spotless / Checkstyle / PMD / SpotBugs | 0 violations |
-| JUnit (unit + contract) | 505 tests, 0 skipped, 0 failures |
-| JaCoCo | instruction 83%, line 84%, method 82%, class 93% |
-| Live sandbox `e2eTest` | 3 tests, **0 skipped**, 0 failures |
+| JUnit (unit + contract) | 517 tests, 0 skipped, 0 failures |
+| JaCoCo | instruction 83%, line 84%, branch 63%, method 82%, class 93% |
+| Live sandbox `e2eTest` | 5 tests, **0 skipped**, 0 failures |
 | SonarQube | 0 bugs, 0 vulnerabilities, 0 hotspots, 0 open smells, coverage 77%, A/A/A |
 
 Two Sonar findings carry a recorded decision rather than a fix, and both are visible on the board with

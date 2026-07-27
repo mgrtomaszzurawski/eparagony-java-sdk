@@ -81,11 +81,8 @@ public record ReceiptRequest(
         if (payments.isEmpty()) {
             throw new IllegalArgumentException("a receipt must have at least one payment");
         }
-        if (totalPaid.grosze() < grossSaleValue.grosze()) {
-            throw new IllegalArgumentException("payments total " + totalPaid
-                    + " but the declared sale value is " + grossSaleValue
-                    + "; the payments must cover the sale");
-        }
+        requireBalanced(totalPaid, change,
+                amountDue(grossSaleValue, packageReturns, returnPackagesIssued));
         requireReconciled(grossSaleValue,
                 lines.stream().map(ReceiptLineItem::contributionToTotal).toList(),
                 FIELD_GROSS_SALE_VALUE, "the sum of the line contributions");
@@ -102,12 +99,69 @@ public record ReceiptRequest(
             String computedName) {
         int total = 0;
         for (Amount part : parts) {
-            total = Math.addExact(total, part.grosze());
+            total = addAmounts(total, part);
         }
         if (declared.grosze() != total) {
             throw new IllegalArgumentException(declaredName + " is " + declared + " but "
                     + computedName + " is " + Amount.ofGrosze(total)
                     + "; eparagony.pl rejects a receipt whose amounts do not reconcile");
+        }
+    }
+
+    /**
+     * The register's till equation: what was handed over, less what was handed back, must equal what
+     * was owed.
+     *
+     * <p>Not a "payments cover the sale" inequality. The server enforces equality and says so badly:
+     * an overpayment with no {@code change} declared is rejected at submission with a bare
+     * {@code 400 errorCode 87} and an empty message, whether or not any packaging is involved. That
+     * was confirmed by probing all four combinations. The builder derives {@code change} for a caller
+     * who does not set it, so the usual path cannot produce this failure at all.
+     */
+    private static void requireBalanced(Amount totalPaid, Amount change, Amount amountDue) {
+        int handedBack = change == null ? 0 : change.grosze();
+        int settled = Math.subtractExact(totalPaid.grosze(), handedBack);
+        if (settled != amountDue.grosze()) {
+            throw new IllegalArgumentException("totalPaid " + totalPaid + " less change "
+                    + Amount.ofGrosze(handedBack) + " settles " + Amount.ofGrosze(settled)
+                    + " but the amount due is " + amountDue
+                    + "; eparagony.pl rejects an unbalanced receipt with an empty error message");
+        }
+    }
+
+    /**
+     * What the customer actually hands over: the sale, less deposits refunded to them for packaging
+     * they brought back, plus deposits charged for packaging they took away.
+     *
+     * <p>Deposits never touch {@code grossSaleValue} — that stays the sum of the line contributions.
+     * They move the payment instead, and the server checks it: a receipt whose {@code totalPaid}
+     * ignores a {@code packageReturns} entry is rejected at submission with a bare
+     * {@code 400 errorCode 87} and no message at all. Confirmed by direct probe, both directions.
+     */
+    private static Amount amountDue(Amount grossSaleValue, List<PackageDeposit> packageReturns,
+            List<PackageDeposit> returnPackagesIssued) {
+        int dueAmount = grossSaleValue.grosze();
+        for (PackageDeposit refunded : packageReturns) {
+            dueAmount = Math.subtractExact(dueAmount, refunded.totalLineValue().grosze());
+        }
+        for (PackageDeposit charged : returnPackagesIssued) {
+            dueAmount = addAmounts(dueAmount, charged.totalLineValue());
+        }
+        return Amount.ofGrosze(dueAmount);
+    }
+
+    /**
+     * Adds with overflow translated into this class's own failure type. {@code Math.addExact} alone
+     * would surface an {@code ArithmeticException} from a builder whose every other arithmetic failure
+     * is an {@code IllegalArgumentException} naming the offending amount.
+     */
+    private static int addAmounts(int runningTotal, Amount part) {
+        try {
+            return Math.addExact(runningTotal, part.grosze());
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("the receipt total overflows past "
+                    + Amount.ofGrosze(Integer.MAX_VALUE) + " while adding " + part
+                    + "; amounts are grosze in a 32-bit integer", overflow);
         }
     }
 
@@ -305,9 +359,24 @@ public record ReceiptRequest(
             Amount effectiveGross = grossSaleValue != null ? grossSaleValue : linesTotal;
             Amount effectivePaid = totalPaid != null ? totalPaid : paymentsTotal;
 
-            requireCovers(effectivePaid, linesTotal);
+            // Against the amount due, not the sale: returned packaging refunds a deposit, so a
+            // perfectly valid receipt can be paid LESS than it sold. Checking against the sale here
+            // made every receipt carrying packageReturns unconstructible.
+            Amount dueAmount = amountDue(effectiveGross, packageReturns, returnPackagesIssued);
+            requireCovers(effectivePaid, dueAmount);
+            // Derived rather than demanded. The server wants totalPaid − change to equal the amount
+            // due exactly, and answers an unbalanced receipt with an empty message, so a caller who
+            // simply hands over more than the total should not have to know that.
+            // Left absent when it is zero, so an ordinary exact-payment receipt keeps the body it had
+            // rather than gaining a "change": 0 the register does not need.
+            Amount effectiveChange = change;
+            if (effectiveChange == null) {
+                int derivedChange = Math.subtractExact(effectivePaid.grosze(), dueAmount.grosze());
+                effectiveChange = derivedChange == 0 ? null : Amount.ofGrosze(derivedChange);
+            }
 
-            return new ReceiptRequest(lines, payments, effectivePaid, change, effectiveGross, taxRates,
+            return new ReceiptRequest(lines, payments, effectivePaid, effectiveChange, effectiveGross,
+                    taxRates,
                     fiscalize, print, orderId, merchantDocumentId, documentToken, transactionToken,
                     statusUrl, metadata, extensions, packageReturns, returnPackagesIssued,
                     settlementAdvancePayment, currencyExchange, dutyFree, actions);
@@ -337,11 +406,10 @@ public record ReceiptRequest(
         }
 
 
-        private static void requireCovers(Amount paid, Amount linesTotal) {
-            if (paid.grosze() < linesTotal.grosze()) {
+        private static void requireCovers(Amount paid, Amount dueAmount) {
+            if (paid.grosze() < dueAmount.grosze()) {
                 throw new IllegalArgumentException("payments total " + paid
-                        + " but the sold items total " + linesTotal
-                        + "; the payments must cover the sale");
+                        + " but the amount due is " + dueAmount + "; the payments must cover it");
             }
         }
     }

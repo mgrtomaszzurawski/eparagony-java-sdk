@@ -29,6 +29,7 @@ import java.security.GeneralSecurityException;
 import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -78,7 +79,7 @@ class WebhookNotificationsTest {
         assertEquals(DocumentState.READY, notification.status().state());
         // READY means the paper printed; the document may not have reached the repository yet.
         assertTrue(notification.status().printed().orElseThrow());
-        assertTrue(!notification.status().isTerminal(), "READY is not a terminal state");
+        assertFalse(notification.status().isTerminal(), "READY is not a terminal state");
     }
 
     @Test

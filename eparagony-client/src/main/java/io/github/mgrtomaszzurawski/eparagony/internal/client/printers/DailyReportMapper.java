@@ -53,6 +53,7 @@ final class DailyReportMapper {
     private static final String FIELD_COMMUNICATION_ERRORS = "communicationErrorsCount";
 
     private static final int ABSENT_COUNT = 0;
+    private static final int MAX_ECHOED_VALUE_LENGTH = 200;
 
     private DailyReportMapper() {
     }
@@ -81,8 +82,19 @@ final class DailyReportMapper {
                 counters(report));
     }
 
+    /**
+     * Names what the server sent, bounded. The same 200-character cap {@code ErrorMapper} and
+     * {@code TokenResponseReader} apply: this string is interpolated into an exception message that
+     * ends up in someone's log, and its length is the server's choice rather than ours.
+     */
     private static String describe(JsonNode node) {
-        return node == null || node.isNull() ? "no value at all" : "\"" + node.asText() + "\"";
+        if (node == null || node.isNull()) {
+            return "no value at all";
+        }
+        String text = node.asText();
+        return text.length() <= MAX_ECHOED_VALUE_LENGTH
+                ? "\"" + text + "\""
+                : "\"" + text.substring(0, MAX_ECHOED_VALUE_LENGTH) + "...\"";
     }
 
     private static DailyReportCounters counters(JsonNode report) {

@@ -68,6 +68,11 @@ public record ReceiptRebateLine(String name, Amount value, TaxRateCode taxRate)
      * A receipt-wide <em>surcharge</em> of the given magnitude. The same wire shape as {@link #of}
      * with the opposite sign — the specification models both through one {@code REBATE} line.
      */
+    public static ReceiptRebateLine markup(String name, Amount magnitude) {
+        return markup(name, magnitude, null);
+    }
+
+    /** A surcharge charged against one VAT slot. Pass a positive amount. */
     public static ReceiptRebateLine markup(String name, Amount magnitude, TaxRateCode taxRate) {
         return new ReceiptRebateLine(name, Amount.ofGrosze(Math.absExact(magnitude.grosze())),
                 taxRate);

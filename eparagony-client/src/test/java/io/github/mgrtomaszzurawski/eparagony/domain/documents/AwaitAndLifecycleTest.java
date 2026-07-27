@@ -44,6 +44,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -95,7 +96,7 @@ class AwaitAndLifecycleTest {
         assertTrue(failure.getMessage().contains("has not failed"),
                 "a timeout is not a failed document and the message must not imply otherwise");
         // A timeout is not a write that may have landed; nothing was sent.
-        assertTrue(!failure.requestMayHaveBeenApplied());
+        assertFalse(failure.requestMayHaveBeenApplied());
     }
 
     @Test

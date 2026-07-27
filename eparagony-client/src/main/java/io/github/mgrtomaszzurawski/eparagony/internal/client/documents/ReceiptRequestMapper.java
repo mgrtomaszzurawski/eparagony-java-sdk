@@ -293,7 +293,16 @@ final class ReceiptRequestMapper {
                     .ifPresent(mapped::taxRate);
             return new ReceiptLine(mapped);
         }
-        return toLine((io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine) item);
+        // Named rather than blind-cast. Java 17 has no exhaustive switch over a sealed type without
+        // preview, so adding a third permitted subtype would compile here and fail at runtime with a
+        // ClassCastException from inside a mapper. This turns that into a statement of what is missing.
+        if (item instanceof io.github.mgrtomaszzurawski.eparagony.domain.documents.model
+                .ReceiptLine line) {
+            return toLine(line);
+        }
+        throw new IllegalStateException("unmapped receipt line branch: "
+                + item.getClass().getName() + "; ReceiptRequestMapper must handle every "
+                + "ReceiptLineItem the sealed interface permits");
     }
 
     private static ReceiptLine toLine(io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine line) {
