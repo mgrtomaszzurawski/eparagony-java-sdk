@@ -63,12 +63,20 @@ public final class ServerText {
      * here because "flattened to one line" should be true rather than nearly true: {@code less} and a
      * terminal render VT, FF, NEL, U+2028 and U+2029 as breaks, and {@code Scanner} splits on them.
      * ESC goes too — a value that reaches a terminal should not be able to move the cursor or set
-     * colours.
+     * colours — as do lone surrogates and the bidi format characters.
      */
     private static boolean isLineBreakOrControl(int codePoint) {
-        return codePoint == '\n' || codePoint == '\r' || codePoint == NEXT_LINE
-                || codePoint == LINE_SEPARATOR || codePoint == PARAGRAPH_SEPARATOR
-                || Character.getType(codePoint) == Character.CONTROL;
+        if (codePoint == '\n' || codePoint == '\r' || codePoint == NEXT_LINE
+                || codePoint == LINE_SEPARATOR || codePoint == PARAGRAPH_SEPARATOR) {
+            return true;
+        }
+        int category = Character.getType(codePoint);
+        // CONTROL covers Cc. SURROGATE catches a lone surrogate the server sent — truncation no
+        // longer creates one, but Jackson will decode a bare \ud800 without checking it is paired,
+        // and a JSON log encoder throws on it, losing the line that recorded the value. FORMAT
+        // catches U+202E and the bidi isolates, which let a value visually reorder its own log line.
+        return category == Character.CONTROL || category == Character.SURROGATE
+                || category == Character.FORMAT;
     }
 
     /**

@@ -38,6 +38,8 @@ class ServerTextTest {
     private static final String VERTICAL_TAB = "\u000B";
     private static final String FORM_FEED = "\f";
     private static final String ESCAPE = "\u001B";
+    private static final String LONE_HIGH_SURROGATE = "\uD800";
+    private static final String RIGHT_TO_LEFT_OVERRIDE = "\u202E";
 
     @Test
     @DisplayName("passes an ordinary value through untouched")
@@ -108,6 +110,18 @@ class ServerTextTest {
         assertFalse(Character.isHighSurrogate(safe.charAt(safe.length() - "...".length() - 1)),
                 "the cut left a lone high surrogate: " + safe.codePoints().count());
         assertTrue(safe.endsWith("..."));
+    }
+
+    @Test
+    @DisplayName("flattens a lone surrogate and a bidi override the server sent")
+    void flattensLoneSurrogateAndBidiOverride() {
+        // Neither is created by truncation any more, but Jackson decodes a bare \ud800 without
+        // checking it is paired, and U+202E lets a value visually reorder its own log line.
+        String hostile = "a" + LONE_HIGH_SURROGATE + "b" + RIGHT_TO_LEFT_OVERRIDE + "c";
+
+        String safe = ServerText.safe(hostile);
+
+        assertEquals("a b c", safe);
     }
 
     @Test

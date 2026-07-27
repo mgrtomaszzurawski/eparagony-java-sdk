@@ -228,7 +228,7 @@ public final class DocumentsImpl implements Documents {
             // an exception. Only the "may have been applied" flag keeps them from reissuing it.
             throw new EparagonyServerException(
                     "The document was accepted but the server's response could not be modelled: "
-                            + ServerText.quoted(unmodellable.getMessage(), "(no detail)")
+                            + describeCause(unmodellable)
                             + ". Do not reissue — that would fiscalize the sale twice.",
                     unmodellable, true);
         }
@@ -239,6 +239,12 @@ public final class DocumentsImpl implements Documents {
      * sending one of these, that is a contract violation and it should be loud rather than silently
      * producing a document record with a hole in it.
      */
+    /** The cause's own message, bounded. Not re-quoted: it already quotes the offending value. */
+    private static String describeCause(Exception cause) {
+        String detail = ServerText.safe(cause.getMessage());
+        return detail == null ? "(no detail)" : detail;
+    }
+
     private static String required(JsonNode root, String field) {
         JsonNode node = root.get(field);
         if (node == null || !node.isTextual() || node.asText().isBlank()) {

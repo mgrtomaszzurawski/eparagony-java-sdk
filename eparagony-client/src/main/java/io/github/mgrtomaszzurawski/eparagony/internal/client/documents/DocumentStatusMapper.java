@@ -113,7 +113,16 @@ public final class DocumentStatusMapper {
             IllegalArgumentException cause) {
         return new EparagonyServerException(
                 "Server sent a '" + field + "' this SDK cannot model: "
-                        + ServerText.quoted(cause.getMessage(), "(no detail)"), cause, false);
+                        + describeCause(cause), cause, false);
+    }
+
+    /**
+     * The cause's own message, bounded — not quoted. It already contains a quoted value, and wrapping
+     * it again nests quotes and strands the inner opening one when the whole thing is truncated.
+     */
+    private static String describeCause(IllegalArgumentException cause) {
+        String detail = ServerText.safe(cause.getMessage());
+        return detail == null ? "(no detail)" : detail;
     }
 
     private static FiscalDeviceUniqueNumber fiscalDevice(JsonNode root) {

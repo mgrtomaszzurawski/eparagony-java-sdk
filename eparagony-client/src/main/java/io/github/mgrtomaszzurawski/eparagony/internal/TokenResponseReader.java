@@ -100,12 +100,18 @@ final class TokenResponseReader {
                     "Authorization server returned a token without a usable expires_in");
         }
         long seconds = expiresIn.asLong();
-        if (seconds <= 0 || seconds > MAX_TOKEN_LIFETIME_SECONDS) {
+        // Against the cache's own expiry margin, not against zero. AccessToken treats a token as spent
+        // once it is within the margin of expiring, so a lifetime of 1..60 seconds passes a
+        // "greater than zero" check and then reproduces precisely the failure this message warns
+        // about: a token request per API call, silently, until the 429 arrives.
+        long minimumSeconds = AccessToken.expiryMargin().toSeconds();
+        if (seconds <= minimumSeconds || seconds > MAX_TOKEN_LIFETIME_SECONDS) {
             throw new EparagonyAuthException(
                     "Authorization server returned a token whose expires_in is " + seconds
-                            + " seconds, which is not a usable lifetime. A non-positive value would "
-                            + "make the SDK re-mint a token on every call, and the API rate-limits "
-                            + "exactly that.");
+                            + " seconds; a usable lifetime is more than " + minimumSeconds
+                            + " and at most " + MAX_TOKEN_LIFETIME_SECONDS + ". A token at or below "
+                            + "the cache's expiry margin is spent on arrival, so the SDK would re-mint "
+                            + "one on every call — and the API rate-limits exactly that.");
         }
         return seconds;
     }

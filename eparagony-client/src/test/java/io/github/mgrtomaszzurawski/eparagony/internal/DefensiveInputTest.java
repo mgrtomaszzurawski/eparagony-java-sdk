@@ -111,15 +111,16 @@ class DefensiveInputTest {
     }
 
     @Test
-    @DisplayName("refuses a token lifetime that would make it re-mint on every call")
+    @DisplayName("refuses a token lifetime inside the cache's own expiry margin")
     void refusesNonPositiveTokenLifetime() {
-        // A token born expired still "works": the cache simply mints a new one per request, which is
-        // the documented way to earn a 429 from this API — arriving later, as a mystery.
+        // 30 seconds is positive, so a "> 0" check would let it through — and AccessToken treats
+        // anything within its 60-second margin as spent, so the cache would mint a new token per
+        // request. That is the documented way to earn a 429 from this API, arriving as a mystery.
         server.stubFor(post(urlPathEqualTo(TOKEN_PATH)).willReturn(aResponse()
                 .withStatus(200)
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"access_token\":\"opaque\",\"token_type\":\"Bearer\","
-                        + "\"expires_in\":0,\"scope\":\"document_create\"}")));
+                        + "\"expires_in\":30,\"scope\":\"document_create\"}")));
 
         Documents documents = client().documents();
         DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);

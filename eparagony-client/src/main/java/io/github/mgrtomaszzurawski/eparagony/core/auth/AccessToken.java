@@ -39,6 +39,14 @@ public record AccessToken(String value, String tokenType, Set<Scope> grantedScop
      */
     private static final Duration EXPIRY_MARGIN = Duration.ofSeconds(60);
 
+    /**
+     * How early a token is treated as spent. Public so the token reader can refuse a lifetime shorter
+     * than this rather than accepting one that is born already expired.
+     */
+    public static Duration expiryMargin() {
+        return EXPIRY_MARGIN;
+    }
+
     public AccessToken {
         Objects.requireNonNull(value, "value");
         Objects.requireNonNull(tokenType, "tokenType");
