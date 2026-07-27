@@ -22,6 +22,7 @@ import io.github.mgrtomaszzurawski.eparagony.core.auth.Scope;
 import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
 import io.github.mgrtomaszzurawski.eparagony.core.config.Environment;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyException;
+import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyRateLimitException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyServerException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyValidationException;
 import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
@@ -43,6 +44,7 @@ import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.IssuedDocume
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentEntry;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentForm;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRebateLine;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRequest;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.SignedDocument;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateCode;
@@ -99,7 +101,8 @@ public final class ExportSurfaceProbe {
                         .sku("SKU-1")
                         .unitOfMeasure("szt.")
                         .build())
-                .addPayment(PaymentEntry.of(PaymentForm.CARD, Amount.ofGrosze(100), "Visa"))
+                .addRebateLine(ReceiptRebateLine.of("Rabat", Amount.ofGrosze(10)))
+                .addPayment(PaymentEntry.of(PaymentForm.CARD, Amount.ofGrosze(90), "Visa"))
                 .statusUrl("https://example.test/webhook")
                 .build();
 
@@ -148,6 +151,8 @@ public final class ExportSurfaceProbe {
             call.run();
         } catch (EparagonyValidationException invalid) {
             invalid.errorCode().ifPresent(code -> consume(String.valueOf(code)));
+        } catch (EparagonyRateLimitException throttled) {
+            consume(String.valueOf(throttled.retryAfter()));
         } catch (EparagonyServerException serverFailure) {
             consume(String.valueOf(serverFailure.requestMayHaveBeenApplied()));
         } catch (EparagonyException other) {

@@ -43,6 +43,7 @@ import io.github.mgrtomaszzurawski.eparagony.rest.model.LoyaltyTransactionDetail
 import io.github.mgrtomaszzurawski.eparagony.rest.model.PackageReturn;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.SettlementAdvancePayment;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.KeyValueLine;
+import io.github.mgrtomaszzurawski.eparagony.rest.model.LineRebate;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.LineWithBarcode;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.LineWithQRCode;
 import io.github.mgrtomaszzurawski.eparagony.rest.model.SeparatorLine;
@@ -156,27 +157,25 @@ final class ReceiptRequestMapper {
         // The spec types point counts as strings, not numbers. Kept typed in the domain and rendered
         // here, rather than pushing the API's choice onto the caller.
         Optional.ofNullable(move.pointsAdded()).ifPresent(points ->
-                mapped.pointsAdded(String.valueOf(points)));
+                mapped.pointsAdded(points.toPlainString()));
         Optional.ofNullable(move.newBalance()).ifPresent(balance ->
-                mapped.newBalance(String.valueOf(balance)));
+                mapped.newBalance(balance.toPlainString()));
         Optional.ofNullable(move.additionalContent()).ifPresent(content ->
                 mapped.additionalContent(toAdditionalContent(content)));
         return mapped;
     }
 
-    private static Content toAdditionalContent(ContentLine line) {
-        Content mapped = new Content();
-        line.bodyIfPresent().ifPresent(mapped::textLine);
-        return mapped;
+    private static Content toAdditionalContent(AdditionalDescription line) {
+        return toAdditionalDescriptionLine(line);
     }
 
     private static PackageReturn toPackageReturn(PackageDeposit deposit) {
         PackageReturn mapped = new PackageReturn()
-                .name(deposit.name())
                 .quantity(deposit.quantity())
                 .unitPrice(deposit.unitPrice().grosze())
                 .totalLineValue(deposit.totalLineValue().grosze());
-        deposit.packageNumberIfPresent().ifPresent(mapped::packageNumber);
+        mapped.packageNumber(deposit.packageNumber());
+        deposit.nameIfPresent().ifPresent(mapped::name);
         Optional.ofNullable(deposit.codes().ean()).ifPresent(mapped::EAN);
         Optional.ofNullable(deposit.codes().sku()).ifPresent(mapped::SKU);
         Optional.ofNullable(deposit.codes().plu()).ifPresent(mapped::PLU);
@@ -201,6 +200,7 @@ final class ReceiptRequestMapper {
         DeliverViaAllegroAction action = new DeliverViaAllegroAction()
                 .type(ACTION_DELIVER_VIA_ALLEGRO)
                 .orderId(delivery.orderId());
+        delivery.actionIdIfPresent().ifPresent(action::actionId);
         delivery.accountIdIfPresent().ifPresent(action::accountId);
         delivery.accountNameIfPresent().ifPresent(action::accountName);
         delivery.actionStatusUrlIfPresent().ifPresent(url -> action.actionStatusUrl(URI.create(url)));
@@ -275,7 +275,22 @@ final class ReceiptRequestMapper {
     }
 
     private static List<ReceiptLine> toLines(ReceiptRequest request) {
-        return request.lines().stream().map(ReceiptRequestMapper::toLine).toList();
+        return request.lines().stream().map(ReceiptRequestMapper::toLineItem).toList();
+    }
+
+    /** Dispatches over the line list's two-way choice: a sold item, or a standalone discount. */
+    private static ReceiptLine toLineItem(
+            io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLineItem item) {
+        if (item instanceof io.github.mgrtomaszzurawski.eparagony.domain.documents.model
+                .ReceiptRebateLine rebateLine) {
+            LineRebate mapped = new LineRebate()
+                    .type(io.github.mgrtomaszzurawski.eparagony.domain.documents.model
+                            .ReceiptRebateLine.LINE_TYPE)
+                    .value(rebateLine.value().grosze());
+            rebateLine.nameIfPresent().ifPresent(mapped::name);
+            return new ReceiptLine(mapped);
+        }
+        return toLine((io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine) item);
     }
 
     private static ReceiptLine toLine(io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine line) {
@@ -332,7 +347,7 @@ final class ReceiptRequestMapper {
         Optional.ofNullable(terms.periodUnit()).ifPresent(unit -> mapped.periodUnit(
                 io.github.mgrtomaszzurawski.eparagony.rest.model.Warranty.PeriodUnitEnum
                         .fromValue(unit.wireValue())));
-        terms.dateToIfStated().ifPresent(date -> mapped.dateTo(date.toString()));
+        terms.dateToIfStated().ifPresent(instant -> mapped.dateTo(instant.toString()));
         terms.additionalDescriptionIfStated().ifPresent(mapped::additionalDescription);
         return mapped;
     }

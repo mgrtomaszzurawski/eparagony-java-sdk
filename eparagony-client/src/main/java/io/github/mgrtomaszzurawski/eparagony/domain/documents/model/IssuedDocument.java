@@ -27,7 +27,7 @@ import java.util.Objects;
  *
  * <p>{@link #documentPublicUrl()} is live immediately, but do not send it to the customer yet: until
  * the status reaches {@code CONFIRMED} there may be no fiscal document behind it. Wait for the
- * webhook, or for {@code Documents.awaitConfirmation}.
+ * webhook, or for {@code Documents.awaitTerminalStatus}.
  *
  * @param transactionToken identifies the commercial transaction
  * @param documentToken identifies this document. Equal to the transaction token when the caller

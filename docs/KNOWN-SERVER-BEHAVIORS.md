@@ -122,6 +122,25 @@ Refused with `400 invalid_scope`: `document_action_get`, `document_get_jws`, `re
 `ecommerce` appears in the status endpoint's `security` block but is **absent from
 `securitySchemes`** — undocumented, yet accepted by the authorization server.
 
+## Sign and type conventions that read backwards
+
+*From the specification, 2026-07-26. Each of these was implemented wrongly first and caught by review.*
+
+- **A rebate is a NEGATIVE value.** `RebatesMarkups.value` and `LineRebate.value`: "Negative value
+  indicates a rebate/reduction, positive value indicates a markup." A positive number under a line
+  labelled *Rabat* is a surcharge. The SDK's `RebateOrMarkup.rebate` / `markup` take a magnitude and
+  apply the sign so a caller never faces this.
+- **A barcode content line has no `BARCODE` type.** The `type` discriminator *is* the symbology, one
+  of nineteen values from `EAN13` to `PHARMACODE`. The QR variant is `QR`, not `QR_CODE`.
+- **Warranty `periodUnit` is upper-case** and has four values including `HOUR`; `dateTo` is a full
+  ISO-8601 instant with offset (`2019-09-02T23:59:59.999+02:00`), not a bare date.
+- **Loyalty `pointsAdded` and `newBalance` are strings**, and the specification's own examples are
+  fractional (`-20.98`, `1234.56`).
+- **`PackageReturn` requires `packageNumber` and not `name`** — the reverse of what the field names
+  suggest. Note also that the vendor's own example for this schema contradicts the schema three ways
+  (`productOrServiceName` instead of `name`, a string `quantity`, no `packageNumber`), so this one
+  wants a live probe before it is trusted in production.
+
 ## Observed timings
 
 *Sandbox, 2026-07-26.* Access token lifetime `expires_in: 3600`. A fiscalized receipt reached

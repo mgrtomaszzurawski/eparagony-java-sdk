@@ -40,6 +40,7 @@ import java.time.ZoneOffset;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
@@ -155,6 +156,25 @@ class AwaitAndLifecycleTest {
 
         assertThrows(IllegalStateException.class, client::documents);
         assertThrows(IllegalStateException.class, client::printers);
+    }
+
+    @Test
+    @DisplayName("refuses a facade captured before close, not just the accessor")
+    void refusesFacadeCapturedBeforeClose() {
+        server.stubFor(get(urlPathEqualTo(STATUS_PATH)).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"status\":\"CONFIRMED\"}")));
+
+        EparagonyClient client = client();
+        // The realistic shape: an application hands the facade to a collaborator, then shuts down.
+        Documents captured = client.documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+        client.close();
+
+        assertThrows(IllegalStateException.class, () -> captured.status(token));
+        // Guarding only the accessor would have let this request reach the server.
+        server.verify(0, getRequestedFor(urlPathEqualTo(STATUS_PATH)));
     }
 
     @Test

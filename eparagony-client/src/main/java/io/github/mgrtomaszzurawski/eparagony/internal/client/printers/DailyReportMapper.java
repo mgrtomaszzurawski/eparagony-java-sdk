@@ -20,10 +20,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateCode;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.DailyReport;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.DailyReportCounters;
+import io.github.mgrtomaszzurawski.eparagony.internal.JsonReader;
 
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.EnumMap;
 import java.util.Map;
 
@@ -58,30 +57,30 @@ final class DailyReportMapper {
 
     static DailyReport fromJson(JsonNode report) {
         return new DailyReport(
-                instant(report, FIELD_ISSUED_AT),
-                instant(report, FIELD_SALE_FROM),
-                instant(report, FIELD_SALE_TO),
-                integer(report, FIELD_REPORT_NUMBER),
+                JsonReader.instant(report, FIELD_ISSUED_AT),
+                JsonReader.instant(report, FIELD_SALE_FROM),
+                JsonReader.instant(report, FIELD_SALE_TO),
+                JsonReader.integerOr(report, FIELD_REPORT_NUMBER, ABSENT_COUNT),
                 textPerTaxRate(report.get(FIELD_TAX_RATES)),
                 decimalPerTaxRate(report.get(FIELD_INVOICES)),
                 decimalPerTaxRate(report.get(FIELD_SALE_GROSS)),
                 decimalPerTaxRate(report.get(FIELD_SALE)),
                 decimalPerTaxRate(report.get(FIELD_TAX)),
-                decimal(report, FIELD_SALE_TOTAL),
-                decimal(report, FIELD_TAX_TOTAL),
+                JsonReader.decimal(report, FIELD_SALE_TOTAL),
+                JsonReader.decimal(report, FIELD_TAX_TOTAL),
                 counters(report));
     }
 
     private static DailyReportCounters counters(JsonNode report) {
         return new DailyReportCounters(
-                integer(report, FIELD_EMERGENCY_SITUATIONS),
-                integer(report, FIELD_CANCELED_RECEIPTS),
-                integer(report, FIELD_NON_FISCAL_DOCUMENTS),
-                integer(report, FIELD_RECEIPTS),
-                integer(report, FIELD_PROGRAMMING_EVENTS),
-                integer(report, FIELD_DB_CHANGES),
-                integer(report, FIELD_NON_FISCAL_ERRORS),
-                integer(report, FIELD_COMMUNICATION_ERRORS));
+                JsonReader.integerOr(report, FIELD_EMERGENCY_SITUATIONS, ABSENT_COUNT),
+                JsonReader.integerOr(report, FIELD_CANCELED_RECEIPTS, ABSENT_COUNT),
+                JsonReader.integerOr(report, FIELD_NON_FISCAL_DOCUMENTS, ABSENT_COUNT),
+                JsonReader.integerOr(report, FIELD_RECEIPTS, ABSENT_COUNT),
+                JsonReader.integerOr(report, FIELD_PROGRAMMING_EVENTS, ABSENT_COUNT),
+                JsonReader.integerOr(report, FIELD_DB_CHANGES, ABSENT_COUNT),
+                JsonReader.integerOr(report, FIELD_NON_FISCAL_ERRORS, ABSENT_COUNT),
+                JsonReader.integerOr(report, FIELD_COMMUNICATION_ERRORS, ABSENT_COUNT));
     }
 
     /** The rates in force, keyed by slot. Values stay strings because {@code "ZW"} is one of them. */
@@ -110,7 +109,7 @@ final class DailyReportMapper {
             return values;
         }
         for (TaxRateCode code : TaxRateCode.values()) {
-            BigDecimal value = decimal(node, code.name());
+            BigDecimal value = JsonReader.decimal(node, code.name());
             if (value != null) {
                 values.put(code, value);
             }
@@ -118,34 +117,6 @@ final class DailyReportMapper {
         return values;
     }
 
-    private static BigDecimal decimal(JsonNode node, String field) {
-        JsonNode value = node.get(field);
-        if (value == null || value.isNull()) {
-            return null;
-        }
-        try {
-            return value.isNumber() ? value.decimalValue() : new BigDecimal(value.asText().trim());
-        } catch (NumberFormatException notANumber) {
-            // A malformed figure is dropped rather than failing the whole report: a monitoring call
-            // that returns fifty reports should not be lost to one bad cell.
-            return null;
-        }
-    }
 
-    private static int integer(JsonNode node, String field) {
-        JsonNode value = node.get(field);
-        return value != null && value.isNumber() ? value.asInt() : ABSENT_COUNT;
-    }
 
-    private static Instant instant(JsonNode node, String field) {
-        JsonNode value = node.get(field);
-        if (value == null || !value.isTextual()) {
-            return null;
-        }
-        try {
-            return Instant.parse(value.asText());
-        } catch (DateTimeParseException unparseable) {
-            return null;
-        }
-    }
 }

@@ -31,7 +31,10 @@ import java.util.List;
  * Issuing documents and following what becomes of them. Obtained from
  * {@code EparagonyClient.documents()}.
  *
- * <p>Every method requires the {@code document_create} scope.
+ * <p>Scopes differ per method and each says which it needs: issuing and reading status require
+ * {@code document_create}, {@link #actions} requires {@code document_action_get}, and
+ * {@link #signedDocument} requires {@code document_get_jws}. The last two are granted by
+ * eparagony.pl on request rather than by default.
  */
 public interface Documents {
 

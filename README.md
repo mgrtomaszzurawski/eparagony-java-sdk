@@ -124,7 +124,8 @@ surface.
 
 ## Requirements
 
-Java 17. No runtime dependencies beyond Jackson.
+Java 17. Runtime dependencies: Jackson (`jackson-databind`, `jackson-datatype-jsr310`) and
+`org.openapitools:jackson-databind-nullable`, which the generated models require. Nothing else.
 
 ## Building
 

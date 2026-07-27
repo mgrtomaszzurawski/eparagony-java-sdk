@@ -22,6 +22,7 @@ import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookSecret;
 import io.github.mgrtomaszzurawski.eparagony.core.webhook.WebhookVerifier;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.Documents;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.Printers;
+import io.github.mgrtomaszzurawski.eparagony.internal.ClientLifecycle;
 import io.github.mgrtomaszzurawski.eparagony.internal.ErrorMapper;
 import io.github.mgrtomaszzurawski.eparagony.internal.HttpRuntime;
 import io.github.mgrtomaszzurawski.eparagony.internal.JsonCodec;
@@ -65,6 +66,8 @@ public final class EparagonyClient implements AutoCloseable {
     private final Documents documents;
     private final Printers printers;
 
+    private final ClientLifecycle lifecycle = new ClientLifecycle();
+
     private volatile boolean closed;
 
     private EparagonyClient(EparagonyConfig config, Clock clock) {
@@ -79,6 +82,9 @@ public final class EparagonyClient implements AutoCloseable {
         HttpRuntime httpRuntime = new HttpRuntime(
                 httpClient, config, userAgent, tokenManager, codec, new ErrorMapper(codec));
         ScopeGuard scopeGuard = new ScopeGuard(config.scopes());
+        // Handed to the facades so a reference captured before close() stops working too — the
+        // accessor check alone only guards the path through this object.
+        httpRuntime.bindLifecycle(lifecycle);
         this.documents = new DocumentsImpl(httpRuntime, codec, config.posId(), clock, scopeGuard);
         this.printers = new PrintersImpl(httpRuntime, codec, scopeGuard);
     }
@@ -161,6 +167,7 @@ public final class EparagonyClient implements AutoCloseable {
     @Override
     public void close() {
         closed = true;
+        lifecycle.close();
     }
 
     private void ensureOpen() {

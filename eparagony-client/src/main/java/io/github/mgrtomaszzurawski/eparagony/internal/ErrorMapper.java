@@ -22,6 +22,7 @@ import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyAuthException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyIdempotencyException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyNotFoundException;
+import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyRateLimitException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyServerException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyValidationException;
 
@@ -39,12 +40,20 @@ public final class ErrorMapper {
     private static final int HTTP_FORBIDDEN = 403;
     private static final int HTTP_NOT_FOUND = 404;
     private static final int HTTP_UNPROCESSABLE_ENTITY = 422;
+    private static final int HTTP_TOO_MANY_REQUESTS = 429;
     private static final int HTTP_SERVER_ERROR_MIN = 500;
 
     private static final String FIELD_MESSAGE = "message";
     private static final String FIELD_ERROR = "error";
     private static final String FIELD_ERROR_CODE = "errorCode";
     private static final String FIELD_ERROR_DESCRIPTION = "error_description";
+
+    /**
+     * Caps how much of a server-supplied string reaches an exception message. The same limit the
+     * token reader applies: an error body is a diagnostic, not a payload to relay whole into whatever
+     * log the consumer writes exceptions to.
+     */
+    private static final int MAX_SERVER_MESSAGE_LENGTH = 200;
 
     private static final String ACCESS_DENIED_HINT =
             " Check that the token's scope covers this endpoint, that the posId belongs to this client, "
@@ -58,6 +67,12 @@ public final class ErrorMapper {
 
     /** Maps a failed response. {@code idempotent} decides whether a 5xx may have been applied. */
     public EparagonyException toException(int statusCode, String body, String path, boolean idempotent) {
+        return toException(statusCode, body, path, idempotent, null);
+    }
+
+    /** Maps a failed response, carrying the server's {@code Retry-After} when it sent one. */
+    public EparagonyException toException(int statusCode, String body, String path, boolean idempotent,
+            java.time.Duration retryAfter) {
         String detail = describe(statusCode, body, path);
         return switch (statusCode) {
             case HTTP_BAD_REQUEST -> new EparagonyValidationException(detail, extractErrorCode(body));
@@ -65,6 +80,7 @@ public final class ErrorMapper {
             case HTTP_FORBIDDEN -> new EparagonyAccessDeniedException(detail + ACCESS_DENIED_HINT);
             case HTTP_NOT_FOUND -> new EparagonyNotFoundException(detail);
             case HTTP_UNPROCESSABLE_ENTITY -> new EparagonyIdempotencyException(detail);
+            case HTTP_TOO_MANY_REQUESTS -> new EparagonyRateLimitException(detail, retryAfter);
             default -> statusCode >= HTTP_SERVER_ERROR_MIN
                     ? new EparagonyServerException(detail, statusCode, !idempotent)
                     : new EparagonyException(detail);
@@ -92,10 +108,16 @@ public final class ErrorMapper {
         for (String field : new String[] {FIELD_MESSAGE, FIELD_ERROR_DESCRIPTION, FIELD_ERROR}) {
             JsonNode candidate = root.get(field);
             if (candidate != null && candidate.isTextual() && !candidate.asText().isBlank()) {
-                return candidate.asText();
+                return truncate(candidate.asText());
             }
         }
         return null;
+    }
+
+    private static String truncate(String value) {
+        return value.length() <= MAX_SERVER_MESSAGE_LENGTH
+                ? value
+                : value.substring(0, MAX_SERVER_MESSAGE_LENGTH) + "...";
     }
 
     private Integer extractErrorCode(String body) {

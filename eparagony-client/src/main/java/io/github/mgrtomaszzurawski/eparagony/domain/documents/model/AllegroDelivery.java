@@ -27,11 +27,13 @@ import java.util.Optional;
  * — a separate one per action, distinct from the fiscalization notification.
  *
  * @param orderId the Allegro order the receipt belongs to
+ * @param actionId a caller-chosen identifier for this action. Each action's webhook carries it, so
+ *     without one a consumer running several actions cannot tell which notification is which.
  * @param accountId the seller's Allegro account, when they have more than one
  * @param accountName that account's name, for readability in status reports
  * @param actionStatusUrl where to POST this action's status notification
  */
-public record AllegroDelivery(String orderId, String accountId, String accountName,
+public record AllegroDelivery(String orderId, String actionId, String accountId, String accountName,
         String actionStatusUrl) {
 
     public AllegroDelivery {
@@ -43,18 +45,31 @@ public record AllegroDelivery(String orderId, String accountId, String accountNa
 
     /** Delivery to the seller's only Allegro account. */
     public static AllegroDelivery forOrder(String orderId) {
-        return new AllegroDelivery(orderId, null, null, null);
+        return new AllegroDelivery(orderId, null, null, null, null);
+    }
+
+    /**
+     * The same delivery, tagged so its webhook can be correlated. Supply one whenever a document
+     * carries more than one action.
+     */
+    public AllegroDelivery identifiedAs(String value) {
+        return new AllegroDelivery(orderId, Objects.requireNonNull(value, "actionId"), accountId,
+                accountName, actionStatusUrl);
+    }
+
+    public Optional<String> actionIdIfPresent() {
+        return Optional.ofNullable(actionId);
     }
 
     /** The same delivery, naming which Allegro account the order belongs to. */
     public AllegroDelivery onAccount(String accountId, String accountName) {
-        return new AllegroDelivery(orderId, Objects.requireNonNull(accountId, "accountId"),
+        return new AllegroDelivery(orderId, actionId, Objects.requireNonNull(accountId, "accountId"),
                 Objects.requireNonNull(accountName, "accountName"), actionStatusUrl);
     }
 
     /** The same delivery, with its own status webhook. */
     public AllegroDelivery notifyingAt(String url) {
-        return new AllegroDelivery(orderId, accountId, accountName,
+        return new AllegroDelivery(orderId, actionId, accountId, accountName,
                 Objects.requireNonNull(url, "actionStatusUrl"));
     }
 

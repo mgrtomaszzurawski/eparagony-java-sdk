@@ -63,7 +63,7 @@ public record ReceiptLine(
         List<RebateOrMarkup> rebatesMarkups,
         List<AdditionalDescription> additionalDescription,
         ReturnPolicy returnPolicy,
-        Warranty warranty) {
+        Warranty warranty) implements ReceiptLineItem {
 
     public ReceiptLine {
         Objects.requireNonNull(productOrServiceName, "productOrServiceName");
@@ -80,6 +80,11 @@ public record ReceiptLine(
         codes = codes == null ? ProductCodes.none() : codes;
         rebatesMarkups = List.copyOf(Objects.requireNonNullElse(rebatesMarkups, List.of()));
         additionalDescription = List.copyOf(Objects.requireNonNullElse(additionalDescription, List.of()));
+    }
+
+    @Override
+    public Amount contributionToTotal() {
+        return totalLineValue;
     }
 
     /** Starts a line. */

@@ -48,7 +48,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
@@ -121,7 +121,8 @@ class FullReceiptPayloadTest {
                           "type": "DELIVER_VIA_ALLEGRO",
                           "orderId": "ALLEGRO-77",
                           "accountId": "acc-1",
-                          "accountName": "BarkShop",
+                          "accountName": "MyShop",
+                          "actionId": "ACT-1",
                           "actionStatusUrl": "https://shop.example/webhooks/allegro"
                         }
                       ],
@@ -165,7 +166,8 @@ class FullReceiptPayloadTest {
                             "CN": "27102011D",
                             "dataMatrix": "DM-1",
                             "externalId": "EXT-1",
-                            "rebatesMarkups": [{"name":"Rabat lojalnosciowy","value":500}],
+                            "rebatesMarkups": [{"name":"Rabat lojalnosciowy","value":-500},
+                                               {"name":"Doplata za pakowanie","value":200}],
                             "additionalDescription": [{"textLine":"Produkt sezonowy"}],
                             "returnPolicy": {
                               "productReturnDays": 30,
@@ -205,15 +207,15 @@ class FullReceiptPayloadTest {
                           "consumerLoyalty": [
                             {
                               "id": "LOY-9",
-                              "name": "BarkClub",
-                              "pointsAdded": "120",
-                              "newBalance": "3400",
-                              "additionalContent": {"textLine":"Saldo punktow: 3400"}
+                              "name": "MyClub",
+                              "pointsAdded": "-20.98",
+                              "newBalance": "1234.56",
+                              "additionalContent": {"graphicType":"QR","graphicLine":"https://shop.example/loyalty/9"}
                             }
                           ],
                           "giftCards": [{"giftCardNo":"GC-1","giftCardValue":4000}],
                           "globalReturnPolicy": {"productReturnDays": 14},
-                          "warranty": {"dateTo": "2028-07-26"}
+                          "warranty": {"dateTo": "2028-07-26T23:59:59.999+02:00"}
                         },
                         "settlementAdvancePayment": [
                           {
@@ -231,7 +233,12 @@ class FullReceiptPayloadTest {
                             "quantity": 2,
                             "unitPrice": 100,
                             "totalLineValue": 200,
-                            "EAN": "05902560100686"
+                            "EAN": "05902560100686",
+                            "SKU": "SKU-BOTTLE",
+                            "PLU": "9001",
+                            "CN": "70109900",
+                            "dataMatrix": "DM-BOTTLE",
+                            "externalId": "EXT-BOTTLE"
                           }
                         ],
                         "returnPackagesIssued": [
@@ -296,6 +303,7 @@ class FullReceiptPayloadTest {
                         .dataMatrix("DM-1")
                         .externalId("EXT-1")
                         .addRebate(RebateOrMarkup.rebate("Rabat lojalnosciowy", Amount.ofGrosze(500)))
+                        .addRebate(RebateOrMarkup.markup("Doplata za pakowanie", Amount.ofGrosze(200)))
                         .addAdditionalDescription(io.github.mgrtomaszzurawski.eparagony.domain.documents
                                 .model.AdditionalDescription.ofText("Produkt sezonowy"))
                         .returnPolicy(ReturnPolicy.of(30, true, "Zwrot w sklepie"))
@@ -314,24 +322,29 @@ class FullReceiptPayloadTest {
                 .extensions(ReceiptExtensions.builder()
                         .recyclingDb("BDO-12345")
                         .addLoyaltyMovement(ReceiptExtensions.LoyaltyMovement
-                                .of("LOY-9", "BarkClub", 120, 3400)
-                                .printing(ContentLine.text("Saldo punktow: 3400")))
+                                .of("LOY-9", "MyClub", new BigDecimal("-20.98"), new BigDecimal("1234.56"))
+                                .printing(io.github.mgrtomaszzurawski.eparagony.domain.documents.model
+                                        .AdditionalDescription.ofGraphic(
+                                                "QR", "https://shop.example/loyalty/9")))
                         .addGiftCard(new ReceiptExtensions.GiftCardUse("GC-1", Amount.ofGrosze(4000)))
                         .globalReturnPolicy(ReturnPolicy.ofDays(14))
-                        .warranty(Warranty.until(LocalDate.parse("2028-07-26")))
+                        .warranty(Warranty.until(OffsetDateTime.parse("2028-07-26T23:59:59.999+02:00")))
                         .build())
                 .addAdvancePaymentSettlement(AdvancePaymentSettlement
                         .of("Zaliczka 2026/07/01", Amount.ofGrosze(2000), TaxRateCode.A)
                         .withOutstanding(Amount.ofGrosze(8000)))
                 .addPackageReturn(PackageDeposit.of("Butelka zwrotna 0.5l", 3, 2, Amount.ofGrosze(100))
                         .identifiedBy(io.github.mgrtomaszzurawski.eparagony.domain.documents.model
-                                .ProductCodes.builder().ean("05902560100686").build()))
+                                .ProductCodes.builder().ean("05902560100686").sku("SKU-BOTTLE")
+                                        .plu("9001").cn("70109900").dataMatrix("DM-BOTTLE")
+                                        .externalId("EXT-BOTTLE").build()))
                 .addReturnPackageIssued(PackageDeposit.of("Skrzynka", 7, 1, Amount.ofGrosze(500)))
                 .currencyExchange(new CurrencyConversion("EUR", new BigDecimal("4.30"),
                         Amount.ofGrosze(2326)))
                 .dutyFree(DutyFreeSale.to("Berlin", List.of("Poznan", "Frankfurt (Oder)")))
                 .addAction(AllegroDelivery.forOrder("ALLEGRO-77")
-                        .onAccount("acc-1", "BarkShop")
+                        .identifiedAs("ACT-1")
+                        .onAccount("acc-1", "MyShop")
                         .notifyingAt("https://shop.example/webhooks/allegro"))
                 .build();
     }

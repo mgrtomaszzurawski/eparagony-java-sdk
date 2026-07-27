@@ -7,10 +7,14 @@
     </Match>
 
     <!--
-        Records that carry a byte[]-free but mutable-looking API. The SDK's records hold only
-        immutable values (String, int, Instant, immutable collections), so the exposure detectors
-        fire on shapes that cannot actually be mutated. WebhookVerifier is the one place a byte[]
-        is retained, and it is defensively handled there.
+        The public value types hold only immutable values — String, int, Instant, enums, and
+        collections copied at construction — so the exposure detectors fire on shapes that cannot be
+        mutated through the returned reference.
+
+        One class in this scope is NOT a record and does retain a byte[]: WebhookVerifier keeps the
+        secret's bytes. It is excluded here on purpose and on its own merits — the array is private,
+        never returned, never handed to anything but Mac, and copying it per call would multiply
+        copies of a secret in the heap rather than reduce them.
     -->
     <Match>
         <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>

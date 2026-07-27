@@ -26,8 +26,9 @@ import java.util.List;
 /**
  * Reading the state of a fiscal printer. Obtained from {@code EparagonyClient.printers()}.
  *
- * <p>Requires the {@code printer_get} scope, which eparagony.pl grants on request rather than by
- * default.
+ * <p>Scopes differ per method: {@link #status} requires {@code printer_get} and
+ * {@link #dailyReports} requires {@code report_fiscal_get}. eparagony.pl grants both on request
+ * rather than by default.
  */
 public interface Printers {
 

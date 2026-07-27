@@ -1,6 +1,6 @@
 // Layer 1 — transport models generated from openapi/documents-v3.yaml (Jackson "native" library).
 // Generated sources are NOT committed; the vendored spec is source-of-truth and never hand-edited.
-// Only *Raw transport POJOs live here; they are never exported to consumers (JPMS-internal).
+// Only the generated transport POJOs live here; they are never exported to consumers.
 
 import groovy.json.JsonOutput
 import org.yaml.snakeyaml.Yaml
@@ -47,7 +47,7 @@ val generatedRoot = layout.buildDirectory.dir("generated/openapi")
 // This step writes a build-only normalized copy that drops exactly those child redeclarations. The
 // property itself survives — the parent still declares it, with its enum type — and the
 // discriminator mapping still drives polymorphic (de)serialization. Nothing else is touched, and
-// the vendored spec stays pristine. See ADR/ADR-001-generate-from-spec-models-only.md.
+// the vendored spec stays pristine. See ADR/ADR-001-generate-layer-1-from-the-vendored-spec.md.
 val normalizeSpec by tasks.registering {
     inputs.file(vendoredSpec)
     outputs.file(normalizedSpec)

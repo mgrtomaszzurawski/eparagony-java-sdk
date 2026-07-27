@@ -71,6 +71,8 @@ public final class HttpRuntime {
     private final JsonCodec codec;
     private final ErrorMapper errorMapper;
 
+    private ClientLifecycle lifecycle;
+
     public HttpRuntime(HttpClient httpClient, EparagonyConfig config, String userAgent,
             TokenManager tokenManager, JsonCodec codec, ErrorMapper errorMapper) {
         this.httpClient = httpClient;
@@ -79,6 +81,11 @@ public final class HttpRuntime {
         this.tokenManager = tokenManager;
         this.codec = codec;
         this.errorMapper = errorMapper;
+    }
+
+    /** Binds the owning client's lifecycle, so a closed client cannot issue through a stale facade. */
+    public void bindLifecycle(ClientLifecycle clientLifecycle) {
+        this.lifecycle = clientLifecycle;
     }
 
     /** {@code GET path}, decoding the JSON response into {@code responseType}. */
@@ -142,6 +149,9 @@ public final class HttpRuntime {
      */
     private <T> T execute(String path, boolean idempotent, IdempotencyKey idempotencyKey,
             java.util.function.Supplier<HttpRequest> requestFactory, Function<RawResponse, T> decoder) {
+        if (lifecycle != null) {
+            lifecycle.ensureOpen();
+        }
         int attempt = 0;
         int retryIndex = FIRST_RETRY_INDEX;
         boolean reauthenticated = false;
@@ -174,10 +184,11 @@ public final class HttpRuntime {
                 continue;
             }
             if (mayRetry && retryPolicy.isRetryableStatus(status, idempotent)) {
-                sleepBackoff(retryPolicy, retryIndex++, retryAfterFloor(response));
+                sleepBackoff(retryPolicy, retryIndex++, retryAfterFloor(response), idempotent);
                 continue;
             }
-            throw errorMapper.toException(status, response.body(), path, idempotent);
+            throw errorMapper.toException(status, response.body(), path, idempotent,
+                    retryAfterFloor(response));
         }
     }
 
@@ -195,7 +206,7 @@ public final class HttpRuntime {
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException failure) {
             if (mayRetry && retryPolicy.isRetryableTransportFailure(idempotent)) {
-                sleepBackoff(retryPolicy, retryIndex, null);
+                sleepBackoff(retryPolicy, retryIndex, null, idempotent);
                 return null;
             }
             throw new EparagonyServerException("Request to " + path + " failed", failure, !idempotent);
@@ -219,14 +230,25 @@ public final class HttpRuntime {
         return statusCode >= HTTP_OK_MIN && statusCode < HTTP_OK_MAX_EXCLUSIVE;
     }
 
-    private void sleepBackoff(RetryPolicy retryPolicy, int retryIndex, Duration retryAfterFloor) {
+    /**
+     * Waits before the next attempt.
+     *
+     * <p>Takes {@code idempotent} because every path that reaches here has <em>already transmitted the
+     * request</em> — this is the pause between a failed attempt and the next one. An interrupt during
+     * that pause (an executor shutting down, a cancelled request) must therefore report the same
+     * "may already have been applied" verdict as any other post-transmission failure. Reporting
+     * {@code false} here told a caller their receipt definitely had not been issued, and the documented
+     * remediation for that is to reissue under a fresh key — fiscalizing the sale twice.
+     */
+    private void sleepBackoff(RetryPolicy retryPolicy, int retryIndex, Duration retryAfterFloor,
+            boolean idempotent) {
         Duration wait = retryPolicy.backoff(retryIndex, retryAfterFloor);
         try {
             Thread.sleep(wait.toMillis());
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new EparagonyServerException("Interrupted while backing off before a retry",
-                    interrupted, false);
+                    interrupted, !idempotent);
         }
     }
 

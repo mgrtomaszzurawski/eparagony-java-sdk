@@ -104,18 +104,29 @@
     </rule>
 
     <rule ref="category/java/codestyle.xml">
+        <!-- Guard clauses and early returns are how the validators and mappers read; forcing a single
+             exit would mean flag variables in exactly the code that must stay obvious. -->
         <exclude name="OnlyOneReturn"/>
+        <!-- Records and utility classes have no constructor to declare. -->
         <exclude name="AtLeastOneConstructor"/>
+        <!-- `final` on every local and parameter is noise the project does not ask for; immutability
+             is enforced where it matters, on the types themselves. -->
         <exclude name="LocalVariableCouldBeFinal"/>
         <exclude name="MethodArgumentCouldBeFinal"/>
+        <!-- Short type names here are specification vocabulary (Amount, Scope, PosId), not laziness. -->
         <exclude name="ShortClassName"/>
+        <!-- Package-private is the deliberate default inside `internal`; annotating each one would
+             restate the package boundary the module system already enforces. -->
         <exclude name="CommentDefaultAccessModifier"/>
+        <!-- Several checks read more naturally as "if absent … else …"; reordering them to satisfy the
+             rule would invert conditions that mirror the specification's own wording. -->
         <exclude name="ConfusingTernary"/>
         <!-- The project's standard bans SHORT names and demands descriptive ones; PMD's default
              17-character ceiling penalises exactly the names the standard asks for
              (fiscalDeviceUniqueNumber, requestMayHaveBeenApplied). The two rules cannot both hold. -->
         <exclude name="LongVariable"/>
-        <!-- `of` is the idiomatic Java factory name (Optional.of, List.of, Duration.of). -->
+        <!-- Idiomatic Java factory names: `of` (Optional.of, List.of, Duration.of) and `to`
+             (DutyFreeSale.to, naming the destination). Both read as the sentence they complete. -->
         <exclude name="ShortMethodName"/>
         <!-- Replaced below with the project's own exception list. -->
         <exclude name="ShortVariable"/>

@@ -33,7 +33,7 @@ import java.util.Objects;
  * opaque error code into an exception naming the two figures that disagree.
  */
 public record ReceiptRequest(
-        List<ReceiptLine> lines,
+        List<ReceiptLineItem> lines,
         List<PaymentEntry> payments,
         Amount totalPaid,
         Amount change,
@@ -86,10 +86,29 @@ public record ReceiptRequest(
                     + " but the declared sale value is " + grossSaleValue
                     + "; the payments must cover the sale");
         }
+        requireReconciled(grossSaleValue,
+                lines.stream().map(ReceiptLineItem::contributionToTotal).toList(),
+                FIELD_GROSS_SALE_VALUE, "the sum of the line contributions");
+        requireReconciled(totalPaid, payments.stream().map(PaymentEntry::amount).toList(),
+                FIELD_TOTAL_PAID, "the sum of the individual payments");
     }
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    /** Shared by the canonical constructor and the builder, so the two cannot drift apart. */
+    private static void requireReconciled(Amount declared, List<Amount> parts, String declaredName,
+            String computedName) {
+        int total = 0;
+        for (Amount part : parts) {
+            total = Math.addExact(total, part.grosze());
+        }
+        if (declared.grosze() != total) {
+            throw new IllegalArgumentException(declaredName + " is " + declared + " but "
+                    + computedName + " is " + Amount.ofGrosze(total)
+                    + "; eparagony.pl rejects a receipt whose amounts do not reconcile");
+        }
     }
 
 
@@ -101,7 +120,7 @@ public record ReceiptRequest(
     /** Builder for {@link ReceiptRequest}. */
     public static final class Builder {
 
-        private final List<ReceiptLine> lines = new ArrayList<>();
+        private final List<ReceiptLineItem> lines = new ArrayList<>();
         private final List<PaymentEntry> payments = new ArrayList<>();
         private Amount totalPaid;
         private Amount change;
@@ -131,7 +150,16 @@ public record ReceiptRequest(
             return this;
         }
 
-        public Builder lines(List<ReceiptLine> values) {
+        /**
+         * Adds a standalone discount line — one that reduces the sale rather than a single product.
+         * Distinct from {@link ReceiptLine.Builder#addRebate}, which discounts one item.
+         */
+        public Builder addRebateLine(ReceiptRebateLine rebate) {
+            lines.add(Objects.requireNonNull(rebate, "rebate"));
+            return this;
+        }
+
+        public Builder lines(List<ReceiptLineItem> values) {
             lines.clear();
             lines.addAll(Objects.requireNonNull(values, "lines"));
             return this;
@@ -272,15 +300,11 @@ public record ReceiptRequest(
             if (payments.isEmpty()) {
                 throw new IllegalArgumentException("a receipt must have at least one payment");
             }
-            Amount linesTotal = sum(lines.stream().map(ReceiptLine::totalLineValue).toList());
+            Amount linesTotal = sum(lines.stream().map(ReceiptLineItem::contributionToTotal).toList());
             Amount paymentsTotal = sum(payments.stream().map(PaymentEntry::amount).toList());
             Amount effectiveGross = grossSaleValue != null ? grossSaleValue : linesTotal;
             Amount effectivePaid = totalPaid != null ? totalPaid : paymentsTotal;
 
-            requireEqual(effectiveGross, linesTotal,
-                    FIELD_GROSS_SALE_VALUE, "the sum of the line totals");
-            requireEqual(effectivePaid, paymentsTotal,
-                    FIELD_TOTAL_PAID, "the sum of the individual payments");
             requireCovers(effectivePaid, linesTotal);
 
             return new ReceiptRequest(lines, payments, effectivePaid, change, effectiveGross, taxRates,
@@ -312,14 +336,6 @@ public record ReceiptRequest(
             return Amount.ofGrosze(total);
         }
 
-        private static void requireEqual(Amount declared, Amount computed, String declaredName,
-                String computedName) {
-            if (declared.grosze() != computed.grosze()) {
-                throw new IllegalArgumentException(declaredName + " is " + declared + " but "
-                        + computedName + " is " + computed
-                        + "; eparagony.pl rejects a receipt whose amounts do not reconcile");
-            }
-        }
 
         private static void requireCovers(Amount paid, Amount linesTotal) {
             if (paid.grosze() < linesTotal.grosze()) {

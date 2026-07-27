@@ -29,8 +29,8 @@ import java.util.Optional;
  * receipt has two lists: {@code packageReturns} for what the customer brought back and
  * {@code returnPackagesIssued} for what they took away.
  *
- * @param name what to print, e.g. {@code "Butelka zwrotna 0.5l"}
- * @param packageNumber the register's packaging type number
+ * @param name what to print, e.g. {@code "Butelka zwrotna 0.5l"}; optional per the specification
+ * @param packageNumber the register's packaging type number. Required.
  * @param quantity how many
  * @param unitPrice the deposit per unit
  * @param totalLineValue the deposit total for this line
@@ -45,7 +45,9 @@ public record PackageDeposit(
         ProductCodes codes) {
 
     public PackageDeposit {
-        Objects.requireNonNull(name, "name");
+        // packageNumber is required by the specification and `name` is not — the reverse of what a
+        // reader expects, and the reverse of what this type asserted before.
+        Objects.requireNonNull(packageNumber, "packageNumber");
         Objects.requireNonNull(unitPrice, "unitPrice");
         Objects.requireNonNull(totalLineValue, "totalLineValue");
         if (quantity <= 0) {
@@ -56,8 +58,15 @@ public record PackageDeposit(
 
     /** A deposit line whose total is {@code unitPrice × quantity}. */
     public static PackageDeposit of(String name, int packageNumber, int quantity, Amount unitPrice) {
-        return new PackageDeposit(name, packageNumber, quantity, unitPrice,
-                Amount.ofGrosze(Math.multiplyExact(unitPrice.grosze(), quantity)), ProductCodes.none());
+        int total;
+        try {
+            total = Math.multiplyExact(unitPrice.grosze(), quantity);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("deposit " + unitPrice + " times " + quantity
+                    + " exceeds what a fiscal document can represent", overflow);
+        }
+        return new PackageDeposit(name, packageNumber, quantity, unitPrice, Amount.ofGrosze(total),
+                ProductCodes.none());
     }
 
     /** The same line with product codes attached. */
@@ -66,7 +75,8 @@ public record PackageDeposit(
                 Objects.requireNonNull(productCodes, "codes"));
     }
 
-    public Optional<Integer> packageNumberIfPresent() {
-        return Optional.ofNullable(packageNumber);
+    /** What to print, when the caller supplied it. Optional per the specification. */
+    public Optional<String> nameIfPresent() {
+        return Optional.ofNullable(name);
     }
 }

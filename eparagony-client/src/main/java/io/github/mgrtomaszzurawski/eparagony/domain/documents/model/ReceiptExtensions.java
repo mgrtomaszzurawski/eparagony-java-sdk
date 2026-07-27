@@ -18,6 +18,8 @@ package io.github.mgrtomaszzurawski.eparagony.domain.documents.model;
 
 import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
 
+import java.math.BigDecimal;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -46,21 +48,36 @@ public record ReceiptExtensions(
     private static final ReceiptExtensions EMPTY =
             new ReceiptExtensions(List.of(), List.of(), null, null, null);
 
-    /** A loyalty programme movement recorded on the receipt. */
-    public record LoyaltyMovement(String id, String name, Integer pointsAdded, Integer newBalance,
-            ContentLine additionalContent) {
+    /**
+     * A loyalty programme movement recorded on the receipt.
+     *
+     * @param additionalContent a line printed beside the movement. Deliberately an
+     *     {@link AdditionalDescription} and not a {@link ContentLine}: this slot accepts only the
+     *     text-or-graphic pair, so a five-way content line would have to be flattened, and a
+     *     separator or key-value line would silently vanish.
+     */
+    public record LoyaltyMovement(String id, String name, BigDecimal pointsAdded,
+            BigDecimal newBalance, AdditionalDescription additionalContent) {
 
         public LoyaltyMovement {
             Objects.requireNonNull(id, "id");
         }
 
-        /** Points earned on this sale, and the balance that leaves. */
-        public static LoyaltyMovement of(String id, String name, int pointsAdded, int newBalance) {
+        /**
+         * Points moved by this sale, and the balance that leaves.
+         *
+         * <p>Decimal, not integer: the specification types both as strings and its own examples are
+         * fractional ({@code -20.98}, {@code 1234.56}). Programmes that award part-points exist, and
+         * rounding them here would print a number that disagrees with the programme. A negative
+         * {@code pointsAdded} is a redemption.
+         */
+        public static LoyaltyMovement of(String id, String name, BigDecimal pointsAdded,
+                BigDecimal newBalance) {
             return new LoyaltyMovement(id, name, pointsAdded, newBalance, null);
         }
 
-        /** The same movement with a line printed beside it, e.g. a QR code to the loyalty account. */
-        public LoyaltyMovement printing(ContentLine content) {
+        /** The same movement with a line printed beside it — text, or a graphic such as a QR code. */
+        public LoyaltyMovement printing(AdditionalDescription content) {
             return new LoyaltyMovement(id, name, pointsAdded, newBalance,
                     Objects.requireNonNull(content, "additionalContent"));
         }

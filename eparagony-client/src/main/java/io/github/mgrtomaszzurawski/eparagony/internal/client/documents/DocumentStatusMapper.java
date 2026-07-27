@@ -22,9 +22,8 @@ import io.github.mgrtomaszzurawski.eparagony.core.model.FiscalDeviceUniqueNumber
 import io.github.mgrtomaszzurawski.eparagony.core.model.TransactionToken;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentState;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentStatus;
+import io.github.mgrtomaszzurawski.eparagony.internal.JsonReader;
 
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
 
 /**
  * Reads a status payload into {@link DocumentStatus}. Internal: never exported.
@@ -62,72 +61,45 @@ public final class DocumentStatusMapper {
     }
 
     public static DocumentStatus fromJson(JsonNode root) {
-        // Kept as a local rather than extracted to a helper: a method declared to return `Boolean`
-        // that can hand back null is an auto-unboxing NPE waiting for its first caller. The tri-state
-        // is genuinely needed here — the server not saying whether paper was produced is not the same
-        // as saying it was not — so the nullability stays visible at the one place it exists.
-        JsonNode printedNode = root.get(FIELD_PRINTED);
-        Boolean printed = printedNode != null && printedNode.isBoolean() ? printedNode.asBoolean() : null;
-
-        return DocumentStatus.builder(DocumentState.fromWireValue(text(root, FIELD_STATUS)))
+        return DocumentStatus.builder(DocumentState.fromWireValue(JsonReader.text(root, FIELD_STATUS)))
                 .documentToken(documentToken(root))
                 .transactionToken(transactionToken(root))
-                .documentType(text(root, FIELD_DOCUMENT_TYPE))
-                .processingMode(text(root, FIELD_PROCESSING_MODE))
+                .documentType(JsonReader.text(root, FIELD_DOCUMENT_TYPE))
+                .processingMode(JsonReader.text(root, FIELD_PROCESSING_MODE))
                 .fiscalDeviceUniqueNumber(fiscalDevice(root))
-                .fiscalDocumentId(text(root, FIELD_FISCAL_DOCUMENT_ID))
-                .fiscalDocumentNumber(integer(root, FIELD_FISCAL_DOCUMENT_NUMBER))
-                .receiptNumber(integer(root, FIELD_RECEIPT_NUMBER))
-                .printed(printed)
-                .endTime(instant(root))
-                .orderId(text(root, FIELD_ORDER_ID))
-                .merchantDocumentId(text(root, FIELD_MERCHANT_DOCUMENT_ID))
-                .documentUrl(text(root, FIELD_DOCUMENT_URL))
+                .fiscalDocumentId(JsonReader.text(root, FIELD_FISCAL_DOCUMENT_ID))
+                .fiscalDocumentNumber(JsonReader.integer(root, FIELD_FISCAL_DOCUMENT_NUMBER))
+                .receiptNumber(JsonReader.integer(root, FIELD_RECEIPT_NUMBER))
+                .printed(JsonReader.bool(root, FIELD_PRINTED).orElse(null))
+                .endTime(JsonReader.instant(root, FIELD_END_TIME))
+                .orderId(JsonReader.text(root, FIELD_ORDER_ID))
+                .merchantDocumentId(JsonReader.text(root, FIELD_MERCHANT_DOCUMENT_ID))
+                .documentUrl(JsonReader.text(root, FIELD_DOCUMENT_URL))
                 .errorMessage(errorMessage(root))
                 .build();
     }
 
     private static DocumentToken documentToken(JsonNode root) {
-        String value = text(root, FIELD_DOCUMENT_TOKEN);
+        String value = JsonReader.text(root, FIELD_DOCUMENT_TOKEN);
         return value == null ? null : DocumentToken.of(value);
     }
 
     private static TransactionToken transactionToken(JsonNode root) {
-        String value = text(root, FIELD_TRANSACTION_TOKEN);
+        String value = JsonReader.text(root, FIELD_TRANSACTION_TOKEN);
         return value == null ? null : TransactionToken.of(value);
     }
 
     private static FiscalDeviceUniqueNumber fiscalDevice(JsonNode root) {
-        String value = text(root, FIELD_FISCAL_DEVICE);
+        String value = JsonReader.text(root, FIELD_FISCAL_DEVICE);
         return value == null ? null : FiscalDeviceUniqueNumber.of(value);
     }
 
     private static String errorMessage(JsonNode root) {
-        String explicit = text(root, FIELD_ERROR_MESSAGE);
-        return explicit != null ? explicit : text(root, FIELD_MESSAGE);
+        String explicit = JsonReader.text(root, FIELD_ERROR_MESSAGE);
+        return explicit != null ? explicit : JsonReader.text(root, FIELD_MESSAGE);
     }
 
-    private static Instant instant(JsonNode root) {
-        String value = text(root, FIELD_END_TIME);
-        if (value == null) {
-            return null;
-        }
-        try {
-            return Instant.parse(value);
-        } catch (DateTimeParseException unparseable) {
-            // A timestamp the SDK cannot read is not worth failing a fiscal confirmation over.
-            return null;
-        }
-    }
 
-    private static String text(JsonNode root, String field) {
-        JsonNode node = root.get(field);
-        return node != null && node.isTextual() && !node.asText().isBlank() ? node.asText() : null;
-    }
 
-    private static Integer integer(JsonNode root, String field) {
-        JsonNode node = root.get(field);
-        return node != null && node.isNumber() ? node.asInt() : null;
-    }
 
 }

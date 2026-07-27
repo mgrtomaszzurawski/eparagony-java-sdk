@@ -19,7 +19,9 @@ package io.github.mgrtomaszzurawski.eparagony.domain.documents;
 import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentEntry;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentForm;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.RebateOrMarkup;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRebateLine;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRequest;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateCode;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateTable;
@@ -161,6 +163,48 @@ class ReceiptRequestBuilderTest {
                 .taxRate(TaxRateCode.A);
 
         assertThrows(IllegalArgumentException.class, line::build);
+    }
+
+    @Test
+    @DisplayName("applies the specification's sign: a rebate is negative, a markup positive")
+    void appliesTheSpecificationSign() {
+        // The reverse of the intuitive reading, and the factories exist so a caller never has to
+        // remember it. Getting this backwards puts a surcharge on a line the customer reads as a
+        // discount.
+        RebateOrMarkup rebate = RebateOrMarkup.rebate("Rabat", Amount.ofGrosze(500));
+        RebateOrMarkup markup = RebateOrMarkup.markup("Doplata", Amount.ofGrosze(500));
+
+        assertEquals(-500, rebate.value().grosze());
+        assertEquals(500, markup.value().grosze());
+        assertTrue(rebate.isRebate());
+        assertTrue(!markup.isRebate());
+    }
+
+    @Test
+    @DisplayName("counts a standalone rebate line against the sale total")
+    void countsRebateLineAgainstTheTotal() {
+        // A rebate LINE reduces the receipt; a rebate attached to a product line does not change that
+        // line's total. Only the former participates in the reconciliation.
+        ReceiptRequest request = ReceiptRequest.builder()
+                .addLine(line(Amount.ofGrosze(10000)))
+                .addRebateLine(ReceiptRebateLine.of("Rabat -10%", Amount.ofGrosze(1000)))
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(9000)))
+                .build();
+
+        assertEquals(9000, request.grossSaleValue().grosze());
+        assertEquals(2, request.lines().size());
+    }
+
+    @Test
+    @DisplayName("rejects a receipt whose rebate line is not reflected in the declared total")
+    void rejectsUnreconciledRebateLine() {
+        ReceiptRequest.Builder request = ReceiptRequest.builder()
+                .addLine(line(Amount.ofGrosze(10000)))
+                .addRebateLine(ReceiptRebateLine.of("Rabat -10%", Amount.ofGrosze(1000)))
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(10000)))
+                .grossSaleValue(Amount.ofGrosze(10000));
+
+        assertThrows(IllegalArgumentException.class, request::build);
     }
 
     private static ReceiptLine line(Amount total) {

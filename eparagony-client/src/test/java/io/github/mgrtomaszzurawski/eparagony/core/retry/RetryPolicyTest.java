@@ -16,6 +16,7 @@
  */
 package io.github.mgrtomaszzurawski.eparagony.core.retry;
 
+import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyConfigurationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.RepeatedTest;
@@ -152,9 +153,12 @@ class RetryPolicyTest {
         RetryPolicy.Builder zeroBackoff = RetryPolicy.builder();
         RetryPolicy.Builder invertedBounds = RetryPolicy.builder();
 
-        assertThrows(RuntimeException.class, () -> zeroAttempts.maxAttempts(0));
-        assertThrows(RuntimeException.class, () -> zeroBackoff.initialBackoff(Duration.ZERO));
+        // The specific type, not RuntimeException: a misconfiguration must arrive as the SDK's
+        // configuration failure, which is what tells a consumer to fix their setup rather than retry.
+        assertThrows(EparagonyConfigurationException.class, () -> zeroAttempts.maxAttempts(0));
+        assertThrows(EparagonyConfigurationException.class,
+                () -> zeroBackoff.initialBackoff(Duration.ZERO));
         invertedBounds.initialBackoff(Duration.ofSeconds(10)).maxBackoff(Duration.ofSeconds(1));
-        assertThrows(RuntimeException.class, invertedBounds::build);
+        assertThrows(EparagonyConfigurationException.class, invertedBounds::build);
     }
 }

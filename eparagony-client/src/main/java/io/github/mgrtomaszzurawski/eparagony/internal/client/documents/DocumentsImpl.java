@@ -35,6 +35,7 @@ import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.SignedDocume
 import io.github.mgrtomaszzurawski.eparagony.internal.ApiPaths;
 import io.github.mgrtomaszzurawski.eparagony.internal.HttpRuntime;
 import io.github.mgrtomaszzurawski.eparagony.internal.JsonCodec;
+import io.github.mgrtomaszzurawski.eparagony.internal.JsonReader;
 import io.github.mgrtomaszzurawski.eparagony.internal.PathTemplate;
 import io.github.mgrtomaszzurawski.eparagony.internal.ScopeGuard;
 import io.github.mgrtomaszzurawski.eparagony.internal.RawResponse;
@@ -157,9 +158,9 @@ public final class DocumentsImpl implements Documents {
         List<DocumentAction> parsed = new ArrayList<>();
         for (JsonNode action : actions) {
             parsed.add(new DocumentAction(
-                    text(action, FIELD_ACTION_ID),
-                    ActionType.fromWireValue(text(action, FIELD_TYPE)),
-                    ActionState.fromWireValue(text(action, FIELD_STATUS))));
+                    JsonReader.text(action, FIELD_ACTION_ID),
+                    ActionType.fromWireValue(JsonReader.text(action, FIELD_TYPE)),
+                    ActionState.fromWireValue(JsonReader.text(action, FIELD_STATUS))));
         }
         return List.copyOf(parsed);
     }
@@ -174,10 +175,6 @@ public final class DocumentsImpl implements Documents {
         return new SignedDocument(required(root, FIELD_JWS));
     }
 
-    private static String text(JsonNode node, String field) {
-        JsonNode value = node.get(field);
-        return value != null && value.isTextual() ? value.asText() : null;
-    }
 
     private void sleep() {
         try {

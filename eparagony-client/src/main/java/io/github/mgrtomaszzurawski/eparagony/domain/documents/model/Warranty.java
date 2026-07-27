@@ -16,7 +16,7 @@
  */
 package io.github.mgrtomaszzurawski.eparagony.domain.documents.model;
 
-import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -31,12 +31,12 @@ import java.util.Optional;
  * @param dateTo the date the warranty ends, when stated absolutely
  * @param additionalDescription free text printed alongside
  */
-public record Warranty(Integer period, PeriodUnit periodUnit, LocalDate dateTo,
+public record Warranty(Integer period, PeriodUnit periodUnit, OffsetDateTime dateTo,
         String additionalDescription) {
 
     /** The units a warranty period can be counted in. */
     public enum PeriodUnit {
-        DAY, MONTH, YEAR;
+        HOUR, DAY, MONTH, YEAR;
 
         /** The literal the API expects. Upper-case, matching the constant name. */
         public String wireValue() {
@@ -52,8 +52,12 @@ public record Warranty(Integer period, PeriodUnit periodUnit, LocalDate dateTo,
         return new Warranty(period, Objects.requireNonNull(periodUnit, "periodUnit"), null, null);
     }
 
-    /** A warranty ending on a fixed date. */
-    public static Warranty until(LocalDate dateTo) {
+    /**
+     * A warranty ending at a fixed instant. An offset is required, not merely a date: the
+     * specification's own example is {@code 2019-09-02T23:59:59.999+02:00}, and a warranty that
+     * expires "on the 2nd" means a different moment in Warsaw than in UTC.
+     */
+    public static Warranty until(OffsetDateTime dateTo) {
         return new Warranty(null, null, Objects.requireNonNull(dateTo, "dateTo"), null);
     }
 
@@ -67,7 +71,7 @@ public record Warranty(Integer period, PeriodUnit periodUnit, LocalDate dateTo,
         return Optional.ofNullable(period);
     }
 
-    public Optional<LocalDate> dateToIfStated() {
+    public Optional<OffsetDateTime> dateToIfStated() {
         return Optional.ofNullable(dateTo);
     }
 

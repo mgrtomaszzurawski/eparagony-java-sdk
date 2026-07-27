@@ -65,8 +65,8 @@ produces that report, so running `check` then `sonar` is the correct order.
 | Gate | Result |
 |---|---|
 | Spotless / Checkstyle / PMD / SpotBugs | 0 violations |
-| JUnit (unit + contract) | 498 tests, 0 skipped, 0 failures |
-| JaCoCo | instruction 83%, line 84%, method 83%, class 95% |
+| JUnit (unit + contract) | 505 tests, 0 skipped, 0 failures |
+| JaCoCo | instruction 83%, line 84%, method 82%, class 93% |
 | Live sandbox `e2eTest` | 3 tests, **0 skipped**, 0 failures |
 | SonarQube | 0 bugs, 0 vulnerabilities, 0 hotspots, 0 open smells, coverage 77%, A/A/A |
 
@@ -90,7 +90,7 @@ the agent volume measures it: spec leaf fields as the denominator, mapper byteco
 
 | Payload root | Mapped | Leaves | Depth |
 |---|---|---|---|
-| `CreateReceiptDocumentPayload` | 126 | 126 | **100%** |
+| `CreateReceiptDocumentPayload` | 126 | 126 | **100%**, both `oneOf` line branches |
 | `CreateGenericDocumentPayload` | 90 | 101 | 89% |
 | `CreateCorrectiveInvoiceDocumentPayload` | 11 | 13 | 85% |
 | `CreateTicketReceiptDocumentPayload` | 71 | 84 | 85% |
@@ -104,12 +104,17 @@ An upper bound, deliberately reported as one: the generated Layer-1 classes are 
 document types, so a field mapped for a receipt counts wherever that same field appears. The receipt
 figure is the trustworthy one — it is the type with a hand-written builder for every leaf.
 
+The receipt denominator now includes the `LineRebate` branch of the line list, which was previously
+unimplemented and therefore silently outside the count. A denominator that omits an unimplemented
+branch cannot yield an honest 100%.
+
 **A depth figure alone is not enough, and `FullReceiptPayloadTest` is why.** The tool measures that a
 mapper *invokes* each Layer-1 setter; it cannot see whether the value handed to it is one the server
 accepts. That test pins the full wire body of a receipt using every optional structure, and on its
-first run it caught three mappings the depth number had already scored as covered: the QR
-discriminator is `QR` and not `QR_CODE`, a barcode line has no `BARCODE` type at all (the symbology
-*is* the type, one of nineteen), and warranty period units are upper-case. Any payload work on the
+first run it caught three mappings the depth number had already scored as covered, and pre-merge review found four
+more of the same species — an inverted rebate sign, a missing `HOUR` period unit, integer loyalty
+points where the spec sends decimal strings, and inverted requiredness on package deposits. All are
+now listed in `docs/KNOWN-SERVER-BEHAVIORS.md` under "Sign and type conventions that read backwards". Any payload work on the
 remaining document types needs the same pinned-body test beside it.
 
 The non-receipt document types have no domain builder yet. Their depth is what they inherit from the

@@ -24,10 +24,15 @@ import java.util.Objects;
  * A discount or surcharge applied to one line.
  *
  * <p>Itemized rather than folded into the price, which is what the tax authority expects and what
- * lets the buyer see what they saved. A negative {@code value} is a markup.
+ * lets the buyer see what they saved.
+ *
+ * <p><strong>The sign is the specification's, and it is the opposite of the intuitive reading:</strong>
+ * a <em>negative</em> value is a rebate, a positive value is a markup. Use {@link #rebate} and
+ * {@link #markup} rather than the constructor; they take the magnitude and apply the sign, so a
+ * caller never has to remember which way round it goes.
  *
  * @param name what to print beside it, e.g. {@code "Rabat lojalnościowy"}
- * @param value the amount taken off (or added, when negative)
+ * @param value signed, per the specification: negative reduces the line, positive increases it
  */
 public record RebateOrMarkup(String name, Amount value) {
 
@@ -39,8 +44,24 @@ public record RebateOrMarkup(String name, Amount value) {
         }
     }
 
-    /** A discount of the given amount. */
-    public static RebateOrMarkup rebate(String name, Amount value) {
-        return new RebateOrMarkup(name, value);
+    /**
+     * A discount of the given magnitude. Pass a positive amount — the negative sign the specification
+     * requires is applied here.
+     */
+    public static RebateOrMarkup rebate(String name, Amount magnitude) {
+        return new RebateOrMarkup(name, Amount.ofGrosze(-Math.abs(magnitude.grosze())));
+    }
+
+    /**
+     * A surcharge of the given magnitude. Pass a positive amount; it reaches the wire positive, which
+     * is what the specification reads as a markup.
+     */
+    public static RebateOrMarkup markup(String name, Amount magnitude) {
+        return new RebateOrMarkup(name, Amount.ofGrosze(Math.abs(magnitude.grosze())));
+    }
+
+    /** {@code true} when this reduces the line — that is, when the signed value is negative. */
+    public boolean isRebate() {
+        return value.grosze() < 0;
     }
 }

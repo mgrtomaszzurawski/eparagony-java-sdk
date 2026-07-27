@@ -30,10 +30,10 @@ java {
 
 // The generated module is linted by nobody: its sources are rewritten from the vendored spec on
 // every build, so a violation there is not actionable and a fix would not survive.
+// eparagony-demo and eparagony-examples are reserved and hold no sources; running three linters
+// against zero files reports success that means nothing. They join this list when they hold code.
 val handWrittenModules = listOf(
     "eparagony-client",
-    "eparagony-demo",
-    "eparagony-examples",
     "eparagony-jpms-consumer",
 )
 

@@ -26,11 +26,11 @@ import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.PrinterStatus
 import io.github.mgrtomaszzurawski.eparagony.internal.ApiPaths;
 import io.github.mgrtomaszzurawski.eparagony.internal.HttpRuntime;
 import io.github.mgrtomaszzurawski.eparagony.internal.JsonCodec;
+import io.github.mgrtomaszzurawski.eparagony.internal.JsonReader;
 import io.github.mgrtomaszzurawski.eparagony.internal.PathTemplate;
 import io.github.mgrtomaszzurawski.eparagony.internal.ScopeGuard;
 
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -70,8 +70,8 @@ public final class PrintersImpl implements Printers {
                 ApiPaths.PRINTER_STATUS, PATH_PARAM_DEVICE, fiscalDeviceUniqueNumber.value());
         JsonNode root = codec.readTree(httpRuntime.getRaw(path));
         return new PrinterStatus(
-                PrinterState.fromWireValue(text(root, FIELD_STATUS)),
-                instant(root, FIELD_LAST_ACTIVE_AT),
+                PrinterState.fromWireValue(JsonReader.text(root, FIELD_STATUS)),
+                JsonReader.instant(root, FIELD_LAST_ACTIVE_AT),
                 crkLastConnectedAt(root));
     }
 
@@ -110,23 +110,8 @@ public final class PrintersImpl implements Printers {
         JsonNode crkStatus = root.get(FIELD_CRK_STATUS);
         return crkStatus == null || !crkStatus.isObject()
                 ? null
-                : instant(crkStatus, FIELD_LAST_CONNECTED_AT);
+                : JsonReader.instant(crkStatus, FIELD_LAST_CONNECTED_AT);
     }
 
-    private static String text(JsonNode node, String field) {
-        JsonNode value = node.get(field);
-        return value != null && value.isTextual() && !value.asText().isBlank() ? value.asText() : null;
-    }
 
-    private static Instant instant(JsonNode node, String field) {
-        String value = text(node, field);
-        if (value == null) {
-            return null;
-        }
-        try {
-            return Instant.parse(value);
-        } catch (DateTimeParseException unparseable) {
-            return null;
-        }
-    }
 }

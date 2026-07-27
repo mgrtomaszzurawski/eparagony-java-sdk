@@ -54,6 +54,9 @@ public final class EparagonyConfig {
     /** Hosts for which cleartext HTTP is tolerated, because nothing leaves the machine. */
     private static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "::1", "[::1]");
 
+    /** Characters that would end a header line and begin another one. */
+    private static final String HEADER_LINE_BREAKS = "\r\n";
+
     private final Environment environment;
     private final String authBaseUrl;
     private final String apiBaseUrl;
@@ -212,18 +215,18 @@ public final class EparagonyConfig {
         }
 
         /**
-         * Identifies the calling application, e.g. {@code "BarkShop/2.1 (+https://barkshop.pl)"}. The
+         * Identifies the calling application, e.g. {@code "MyShop/2.1 (+https://myshop.example)"}. The
          * API requires a non-generic User-Agent and rejects the default one an HTTP stack would send,
          * so this has no sensible default and must be supplied.
          */
         public Builder applicationUserAgent(String value) {
-            this.applicationUserAgent = Objects.requireNonNull(value, "applicationUserAgent");
+            this.applicationUserAgent = requireHeaderSafe(value, "applicationUserAgent");
             return this;
         }
 
         /** Sets {@code X-Integration-Id}, required of integrators serving multiple merchants. */
         public Builder integrationId(String value) {
-            this.integrationId = Objects.requireNonNull(value, "integrationId");
+            this.integrationId = requireHeaderSafe(value, "integrationId");
             return this;
         }
 
@@ -274,6 +277,26 @@ public final class EparagonyConfig {
             }
         }
 
+        /**
+         * Rejects a value that would break out of the header it is written into.
+         *
+         * <p>Both of these end up in an HTTP header. The JDK's own client refuses a CR or LF too, but
+         * it refuses it at send time, deep in a stack trace and long after the misconfiguration was
+         * introduced. This class exists to fail at construction, and a promise to validate
+         * configuration should not have an exception for the values that carry injection risk.
+         */
+        private static String requireHeaderSafe(String value, String name) {
+            Objects.requireNonNull(value, name);
+            for (int index = 0; index < value.length(); index++) {
+                if (HEADER_LINE_BREAKS.indexOf(value.charAt(index)) >= 0) {
+                    throw new EparagonyConfigurationException(
+                            name + " must not contain a carriage return or line feed; it is sent as an "
+                                    + "HTTP header");
+                }
+            }
+            return value;
+        }
+
         private static boolean isLoopback(String host) {
             return host != null && LOOPBACK_HOSTS.contains(host.toLowerCase(Locale.ROOT));
         }
@@ -288,13 +311,13 @@ public final class EparagonyConfig {
             String trimmed = value.trim();
             if (trimmed.length() < MINIMUM_APPLICATION_USER_AGENT_LENGTH) {
                 throw new EparagonyConfigurationException(
-                        "applicationUserAgent must identify your application, e.g. \"BarkShop/2.1 (+https://barkshop.pl)\"");
+                        "applicationUserAgent must identify your application, e.g. \"MyShop/2.1 (+https://myshop.example)\"");
             }
             String leadingToken = trimmed.split("[/ ]", 2)[0].toLowerCase(Locale.ROOT);
             if (GENERIC_USER_AGENT_PREFIXES.contains(leadingToken)) {
                 throw new EparagonyConfigurationException(
                         "applicationUserAgent \"" + trimmed + "\" is generic and the API rejects it; "
-                                + "identify your application, e.g. \"BarkShop/2.1 (+https://barkshop.pl)\"");
+                                + "identify your application, e.g. \"MyShop/2.1 (+https://myshop.example)\"");
             }
         }
     }
