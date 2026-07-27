@@ -26,6 +26,8 @@ import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyRateLimitExcept
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyServerException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyValidationException;
 
+import java.time.Duration;
+
 /**
  * Turns a non-2xx response into the exception whose remediation matches. Internal: never exported.
  *
@@ -48,13 +50,6 @@ public final class ErrorMapper {
     private static final String FIELD_ERROR_CODE = "errorCode";
     private static final String FIELD_ERROR_DESCRIPTION = "error_description";
 
-    /**
-     * Caps how much of a server-supplied string reaches an exception message. The same limit the
-     * token reader applies: an error body is a diagnostic, not a payload to relay whole into whatever
-     * log the consumer writes exceptions to.
-     */
-    private static final int MAX_SERVER_MESSAGE_LENGTH = 200;
-
     private static final String ACCESS_DENIED_HINT =
             " Check that the token's scope covers this endpoint, that the posId belongs to this client, "
                     + "and that the document was issued by it.";
@@ -72,10 +67,13 @@ public final class ErrorMapper {
 
     /** Maps a failed response, carrying the server's {@code Retry-After} when it sent one. */
     public EparagonyException toException(int statusCode, String body, String path, boolean idempotent,
-            java.time.Duration retryAfter) {
-        String detail = describe(statusCode, body, path);
+            Duration retryAfter) {
+        // Parsed once. Both the message and the numeric code come out of the same body, and reading
+        // the tree twice for one response is work done on every single failure.
+        JsonNode root = parseOrNull(body);
+        String detail = describe(statusCode, root, path);
         return switch (statusCode) {
-            case HTTP_BAD_REQUEST -> new EparagonyValidationException(detail, extractErrorCode(body));
+            case HTTP_BAD_REQUEST -> new EparagonyValidationException(detail, extractErrorCode(root));
             case HTTP_UNAUTHORIZED -> new EparagonyAuthException(detail);
             case HTTP_FORBIDDEN -> new EparagonyAccessDeniedException(detail + ACCESS_DENIED_HINT);
             case HTTP_NOT_FOUND -> new EparagonyNotFoundException(detail);
@@ -87,48 +85,44 @@ public final class ErrorMapper {
         };
     }
 
-    private String describe(int statusCode, String body, String path) {
-        String serverMessage = extractMessage(body);
+    /** The body as a tree, or {@code null} when there is nothing readable in it. */
+    private JsonNode parseOrNull(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        try {
+            return codec.readTree(body);
+        } catch (EparagonyException notJson) {
+            // A gateway can answer with HTML; the status alone still carries the remediation.
+            return null;
+        }
+    }
+
+    private String describe(int statusCode, JsonNode root, String path) {
+        String serverMessage = extractMessage(root);
         return serverMessage == null
                 ? "HTTP " + statusCode + " from " + path
                 : "HTTP " + statusCode + " from " + path + ": " + serverMessage;
     }
 
-    private String extractMessage(String body) {
-        if (body == null || body.isBlank()) {
-            return null;
-        }
-        JsonNode root;
-        try {
-            root = codec.readTree(body);
-        } catch (EparagonyException notJson) {
-            // A gateway can answer with HTML; the status alone still carries the remediation.
+    private static String extractMessage(JsonNode root) {
+        if (root == null) {
             return null;
         }
         for (String field : new String[] {FIELD_MESSAGE, FIELD_ERROR_DESCRIPTION, FIELD_ERROR}) {
             JsonNode candidate = root.get(field);
             if (candidate != null && candidate.isTextual() && !candidate.asText().isBlank()) {
-                return truncate(candidate.asText());
+                return ServerText.safe(candidate.asText());
             }
         }
         return null;
     }
 
-    private static String truncate(String value) {
-        return value.length() <= MAX_SERVER_MESSAGE_LENGTH
-                ? value
-                : value.substring(0, MAX_SERVER_MESSAGE_LENGTH) + "...";
-    }
-
-    private Integer extractErrorCode(String body) {
-        if (body == null || body.isBlank()) {
+    private static Integer extractErrorCode(JsonNode root) {
+        if (root == null) {
             return null;
         }
-        try {
-            JsonNode candidate = codec.readTree(body).get(FIELD_ERROR_CODE);
-            return candidate != null && candidate.isNumber() ? candidate.asInt() : null;
-        } catch (EparagonyException notJson) {
-            return null;
-        }
+        JsonNode candidate = root.get(FIELD_ERROR_CODE);
+        return candidate != null && candidate.isNumber() ? candidate.asInt() : null;
     }
 }

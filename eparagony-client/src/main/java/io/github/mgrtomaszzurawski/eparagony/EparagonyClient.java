@@ -69,8 +69,6 @@ public final class EparagonyClient implements AutoCloseable {
 
     private final ClientLifecycle lifecycle = new ClientLifecycle();
 
-    private volatile boolean closed;
-
     private EparagonyClient(EparagonyConfig config, Clock clock) {
         this.config = config;
         HttpClient httpClient = HttpClient.newBuilder()
@@ -111,7 +109,7 @@ public final class EparagonyClient implements AutoCloseable {
      * would lock a caller out of the other two.
      */
     public Documents documents() {
-        ensureOpen();
+        lifecycle.ensureOpen();
         return documents;
     }
 
@@ -120,7 +118,7 @@ public final class EparagonyClient implements AutoCloseable {
      * {@link #documents()} for why.
      */
     public Printers printers() {
-        ensureOpen();
+        lifecycle.ensureOpen();
         return printers;
     }
 
@@ -169,15 +167,9 @@ public final class EparagonyClient implements AutoCloseable {
      */
     @Override
     public void close() {
-        closed = true;
         lifecycle.close();
     }
 
-    private void ensureOpen() {
-        if (closed) {
-            throw new IllegalStateException("EparagonyClient has been closed");
-        }
-    }
 
 
     private static String userAgent(EparagonyConfig config) {

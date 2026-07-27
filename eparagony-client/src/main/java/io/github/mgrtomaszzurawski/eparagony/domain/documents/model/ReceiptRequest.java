@@ -28,9 +28,21 @@ import java.util.Objects;
  * A request to issue a fiscal e-receipt.
  *
  * <p>Build one with {@link #builder()}. The builder reconciles the amounts before the request leaves
- * the process: the payments must cover the lines, and the declared gross sale value must equal their
- * sum. eparagony.pl enforces both and answers {@code 400}, so checking here turns a round trip and an
- * opaque error code into an exception naming the two figures that disagree.
+ * the process, against the same three rules the register applies:
+ *
+ * <ul>
+ *   <li>{@code grossSaleValue} equals the sum of the line contributions — including each line's own
+ *       discounts, which sit outside {@code totalLineValue}
+ *   <li>{@code totalPaid} equals the sum of the individual payments
+ *   <li>the till balances: {@code totalPaid − change == grossSaleValue − packageReturns
+ *       + returnPackagesIssued}. Not an inequality — a receipt paid more than it owes must say where
+ *       the difference went, and one whose customer returned packaging is paid <em>less</em> than it
+ *       sold.
+ * </ul>
+ *
+ * <p>eparagony.pl enforces all three and answers {@code 400}, the last of them with no message at
+ * all, so checking here turns a round trip and a bare error code into an exception naming the two
+ * figures that disagree.
  */
 public record ReceiptRequest(
         List<ReceiptLineItem> lines,
@@ -120,7 +132,7 @@ public record ReceiptRequest(
      */
     private static void requireBalanced(Amount totalPaid, Amount change, Amount amountDue) {
         int handedBack = change == null ? 0 : change.grosze();
-        int settled = Math.subtractExact(totalPaid.grosze(), handedBack);
+        int settled = subtractAmount(totalPaid.grosze(), handedBack);
         if (settled != amountDue.grosze()) {
             throw new IllegalArgumentException("totalPaid " + totalPaid + " less change "
                     + Amount.ofGrosze(handedBack) + " settles " + Amount.ofGrosze(settled)
@@ -142,7 +154,7 @@ public record ReceiptRequest(
             List<PackageDeposit> returnPackagesIssued) {
         int dueAmount = grossSaleValue.grosze();
         for (PackageDeposit refunded : packageReturns) {
-            dueAmount = Math.subtractExact(dueAmount, refunded.totalLineValue().grosze());
+            dueAmount = subtractAmount(dueAmount, refunded.totalLineValue().grosze());
         }
         for (PackageDeposit charged : returnPackagesIssued) {
             dueAmount = addAmounts(dueAmount, charged.totalLineValue());
@@ -161,6 +173,17 @@ public record ReceiptRequest(
         } catch (ArithmeticException overflow) {
             throw new IllegalArgumentException("the receipt total overflows past "
                     + Amount.ofGrosze(Integer.MAX_VALUE) + " while adding " + part
+                    + "; amounts are grosze in a 32-bit integer", overflow);
+        }
+    }
+
+    /** The subtraction counterpart, so no arithmetic in this class escapes as {@code ArithmeticException}. */
+    private static int subtractAmount(int runningTotal, int part) {
+        try {
+            return Math.subtractExact(runningTotal, part);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("the receipt total overflows while subtracting "
+                    + Amount.ofGrosze(part) + " from " + Amount.ofGrosze(runningTotal)
                     + "; amounts are grosze in a 32-bit integer", overflow);
         }
     }
@@ -371,7 +394,7 @@ public record ReceiptRequest(
             // rather than gaining a "change": 0 the register does not need.
             Amount effectiveChange = change;
             if (effectiveChange == null) {
-                int derivedChange = Math.subtractExact(effectivePaid.grosze(), dueAmount.grosze());
+                int derivedChange = subtractAmount(effectivePaid.grosze(), dueAmount.grosze());
                 effectiveChange = derivedChange == 0 ? null : Amount.ofGrosze(derivedChange);
             }
 

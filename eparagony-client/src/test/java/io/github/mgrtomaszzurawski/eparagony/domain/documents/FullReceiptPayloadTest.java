@@ -229,7 +229,7 @@ class FullReceiptPayloadTest {
                             "nameOfPayment": "Zaliczka 2026/07/01",
                             "value": 2000,
                             "taxRate": "A",
-                            "requiredAdditionalPayment": 8000,
+                            "requiredAdditionalPayment": 7000,
                             "isStorno": false
                           }
                         ],
@@ -344,7 +344,9 @@ class FullReceiptPayloadTest {
                         .build())
                 .addAdvancePaymentSettlement(AdvancePaymentSettlement
                         .of("Zaliczka 2026/07/01", Amount.ofGrosze(2000), TaxRateCode.A)
-                        .withOutstanding(Amount.ofGrosze(8000)))
+                        // Advance 2000 against a 9000 sale leaves 7000. The server does not check this field —
+                        // probed as informational — but a fixture that adds up to nothing reads as a typo.
+                        .withOutstanding(Amount.ofGrosze(7000)))
                 .addPackageReturn(PackageDeposit.of("Butelka zwrotna 0.5l", 3, 2, Amount.ofGrosze(100))
                         .identifiedBy(io.github.mgrtomaszzurawski.eparagony.domain.documents.model
                                 .ProductCodes.builder().ean("05902560100686").sku("SKU-BOTTLE")

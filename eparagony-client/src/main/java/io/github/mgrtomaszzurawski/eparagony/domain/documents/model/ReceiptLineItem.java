@@ -16,6 +16,8 @@
  */
 package io.github.mgrtomaszzurawski.eparagony.domain.documents.model;
 
+import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
+
 /**
  * An entry in a receipt's line list.
  *
@@ -29,5 +31,5 @@ package io.github.mgrtomaszzurawski.eparagony.domain.documents.model;
 public sealed interface ReceiptLineItem permits ReceiptLine, ReceiptRebateLine {
 
     /** The amount this entry contributes to the sale total, signed. */
-    io.github.mgrtomaszzurawski.eparagony.core.model.Amount contributionToTotal();
+    Amount contributionToTotal();
 }

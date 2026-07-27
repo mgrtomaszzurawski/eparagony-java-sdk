@@ -22,6 +22,7 @@ import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyException;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.DailyReport;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.DailyReportCounters;
 import io.github.mgrtomaszzurawski.eparagony.internal.JsonReader;
+import io.github.mgrtomaszzurawski.eparagony.internal.ServerText;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -53,7 +54,6 @@ final class DailyReportMapper {
     private static final String FIELD_COMMUNICATION_ERRORS = "communicationErrorsCount";
 
     private static final int ABSENT_COUNT = 0;
-    private static final int MAX_ECHOED_VALUE_LENGTH = 200;
 
     private DailyReportMapper() {
     }
@@ -82,19 +82,11 @@ final class DailyReportMapper {
                 counters(report));
     }
 
-    /**
-     * Names what the server sent, bounded. The same 200-character cap {@code ErrorMapper} and
-     * {@code TokenResponseReader} apply: this string is interpolated into an exception message that
-     * ends up in someone's log, and its length is the server's choice rather than ours.
-     */
+    /** Names what the server sent, bounded and single-line like every other echoed value. */
     private static String describe(JsonNode node) {
-        if (node == null || node.isNull()) {
-            return "no value at all";
-        }
-        String text = node.asText();
-        return text.length() <= MAX_ECHOED_VALUE_LENGTH
-                ? "\"" + text + "\""
-                : "\"" + text.substring(0, MAX_ECHOED_VALUE_LENGTH) + "...\"";
+        return node == null || node.isNull()
+                ? "no value at all"
+                : ServerText.quoted(node.asText(), "no value at all");
     }
 
     private static DailyReportCounters counters(JsonNode report) {

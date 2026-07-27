@@ -186,16 +186,23 @@ class DefensiveInputTest {
         });
         caller.start();
 
-        // Wait for the POST to actually have been made, not for a guessed number of milliseconds:
-        // once the server has seen it the caller is inside the BACKOFF park, which is the only window
-        // where this interrupt tests what it claims to.
-        awaitFirstDocumentPost();
+        // Waiting for the request to appear in the journal is not enough: the response has not
+        // necessarily reached the caller yet, so the interrupt could land inside httpClient.send()
+        // and be handled by a different branch that asserts identically. Waiting until the thread is
+        // parked in Thread.sleep — TIMED_WAITING — is what puts it demonstrably inside the backoff.
+        awaitParkedInBackoff(caller);
         caller.interrupt();
         assertTrue(finished.await(AWAIT_SECONDS, TimeUnit.SECONDS),
                 "an interrupted backoff must not leave the caller parked");
 
         EparagonyServerException failure = caught.get();
         assertNotNull(failure, "the interrupt must surface as an SDK exception, not escape as raw");
+        // Names the backoff branch specifically. Without this the test would still pass if the
+        // interrupt were caught while sending, which asserts the same flag for a different reason and
+        // would leave the CRITICAL unguarded.
+        assertTrue(failure.getMessage().contains("backing off"),
+                "the interrupt must be the one in the retry backoff, but said: "
+                        + failure.getMessage());
         assertTrue(failure.requestMayHaveBeenApplied(),
                 "a POST interrupted mid-backoff may already have fiscalized; saying otherwise "
                         + "invites the caller to reissue and charge the customer twice");
@@ -203,16 +210,23 @@ class DefensiveInputTest {
                 "swallowing an InterruptedException must not swallow the interrupt itself");
     }
 
-    /** Spins until the stub has recorded the first {@code POST /documents}, or the deadline passes. */
-    private void awaitFirstDocumentPost() {
+    /**
+     * Spins until the worker is demonstrably parked in the retry backoff: the stub has seen the POST
+     * <em>and</em> the thread has entered {@code TIMED_WAITING}, which on this path only
+     * {@code Thread.sleep} in {@code sleepBackoff} produces.
+     */
+    private void awaitParkedInBackoff(Thread caller) {
         long deadline = System.nanoTime() + Duration.ofSeconds(AWAIT_SECONDS).toNanos();
         while (System.nanoTime() < deadline) {
-            if (!server.findAll(postRequestedFor(urlPathEqualTo(DOCUMENTS_PATH))).isEmpty()) {
+            boolean posted = !server.findAll(postRequestedFor(urlPathEqualTo(DOCUMENTS_PATH)))
+                    .isEmpty();
+            if (posted && caller.getState() == Thread.State.TIMED_WAITING) {
                 return;
             }
             Thread.onSpinWait();
         }
-        throw new AssertionError("the stub never received a POST " + DOCUMENTS_PATH);
+        throw new AssertionError("the caller never parked in the retry backoff; it was "
+                + caller.getState());
     }
 
     private void stubRateLimited(String retryAfter) {

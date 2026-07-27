@@ -37,6 +37,7 @@ import io.github.mgrtomaszzurawski.eparagony.internal.HttpRuntime;
 import io.github.mgrtomaszzurawski.eparagony.internal.JsonCodec;
 import io.github.mgrtomaszzurawski.eparagony.internal.JsonReader;
 import io.github.mgrtomaszzurawski.eparagony.internal.PathTemplate;
+import io.github.mgrtomaszzurawski.eparagony.internal.ServerText;
 import io.github.mgrtomaszzurawski.eparagony.internal.ScopeGuard;
 import io.github.mgrtomaszzurawski.eparagony.internal.RawResponse;
 
@@ -65,7 +66,11 @@ public final class DocumentsImpl implements Documents {
 
     /** {@code 202} means the data was accepted and the register is still working. */
     private static final int HTTP_ACCEPTED = 202;
-    private static final int MAX_ECHOED_DETAIL_LENGTH = 200;
+    /**
+     * The last poll succeeded; the SDK stopped waiting. Reported as {@code 200} rather than the
+     * "no response" sentinel because a response is exactly what every poll got.
+     */
+    private static final int HTTP_POLL_TIMED_OUT = 200;
 
     /** How long to wait between status polls. Fiscalization takes seconds, not milliseconds. */
     private static final Duration POLL_INTERVAL = Duration.ofSeconds(2);
@@ -134,12 +139,27 @@ public final class DocumentsImpl implements Documents {
         throw notSettled(documentToken, status(documentToken), timeout);
     }
 
+    /**
+     * Giving up waiting is not a failure of the document.
+     *
+     * <p>{@code requestMayHaveBeenApplied} is {@code false} because it describes <em>this</em>
+     * request, and this request was a read: the polls changed nothing. It emphatically does not mean
+     * the document is unfiscalized — it already exists, and the register is still working on it. The
+     * message says so outright, because a caller who reads the flag as "not fiscalized" and reissues
+     * would charge the customer twice.
+     *
+     * <p>{@code HTTP_POLL_TIMED_OUT}, not {@code NO_HTTP_RESPONSE}: every poll answered {@code 200}.
+     * Claiming no response was ever produced would be false, and the sentinel exists for genuine
+     * transport failures.
+     */
     private static EparagonyServerException notSettled(DocumentToken documentToken,
             DocumentStatus current, Duration timeout) {
         return new EparagonyServerException(
                 "Document " + documentToken + " was still " + current.state() + " after " + timeout
-                        + "; it has not failed, it has not settled yet",
-                EparagonyServerException.NO_HTTP_RESPONSE, false);
+                        + "; it has not failed, it has not settled yet. The document exists and is"
+                        + " being fiscalized — keep polling or wait for the webhook. Do not reissue"
+                        + " it; that would fiscalize the sale twice.",
+                HTTP_POLL_TIMED_OUT, false);
     }
 
     @Override
@@ -188,13 +208,14 @@ public final class DocumentsImpl implements Documents {
     }
 
     private IssuedDocument toIssuedDocument(RawResponse response) {
-        JsonNode root = codec.readTree(response.body());
-        // The tokens are shape-checked, and this runs AFTER the sale has been fiscalized. A raw
-        // IllegalArgumentException here would escape the EparagonyException hierarchy, and the
-        // documented remediation for a failed issue() is to reissue — which would fiscalize twice.
-        // Translating it keeps the caller inside the hierarchy and inside the "do not blindly retry"
-        // contract, and the message carries the tokens so the sale is still traceable.
+        // Everything from parsing onward, deliberately. This runs AFTER the sale has been fiscalized,
+        // so any failure here — an unparseable body, a required field the server dropped, a token
+        // whose shape we cannot model — leaves the caller holding an exception for a document that
+        // exists. The documented remediation for a failed issue() is to reissue, which would
+        // fiscalize the same sale twice, and only the "may have been applied" flag stops that.
+        // Leaving readTree outside this block was exactly that hazard, one line up.
         try {
+            JsonNode root = codec.readTree(response.body());
             return new IssuedDocument(
                     TransactionToken.of(required(root, FIELD_TRANSACTION_TOKEN)),
                     DocumentToken.of(required(root, FIELD_DOCUMENT_TOKEN)),
@@ -207,7 +228,7 @@ public final class DocumentsImpl implements Documents {
             // an exception. Only the "may have been applied" flag keeps them from reissuing it.
             throw new EparagonyServerException(
                     "The document was accepted but the server's response could not be modelled: "
-                            + truncate(unmodellable.getMessage())
+                            + ServerText.quoted(unmodellable.getMessage(), "(no detail)")
                             + ". Do not reissue — that would fiscalize the sale twice.",
                     unmodellable, true);
         }
@@ -218,17 +239,6 @@ public final class DocumentsImpl implements Documents {
      * sending one of these, that is a contract violation and it should be loud rather than silently
      * producing a document record with a hole in it.
      */
-    /** Bounds and de-newlines a message that quotes a server-supplied value. */
-    private static String truncate(String message) {
-        if (message == null) {
-            return "(no detail)";
-        }
-        String flattened = message.replace('\r', ' ').replace('\n', ' ');
-        return flattened.length() <= MAX_ECHOED_DETAIL_LENGTH
-                ? flattened
-                : flattened.substring(0, MAX_ECHOED_DETAIL_LENGTH) + "...";
-    }
-
     private static String required(JsonNode root, String field) {
         JsonNode node = root.get(field);
         if (node == null || !node.isTextual() || node.asText().isBlank()) {

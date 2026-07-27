@@ -46,9 +46,6 @@ final class TokenResponseReader {
     private static final String DEFAULT_TOKEN_TYPE = "Bearer";
     private static final int HTTP_SERVER_ERROR_MIN = 500;
 
-    /** Caps how much of a server-supplied error string reaches an exception message. */
-    private static final int MAX_ERROR_DETAIL_LENGTH = 200;
-
     private final JsonCodec codec;
     private final Clock clock;
 
@@ -121,11 +118,8 @@ final class TokenResponseReader {
     }
 
     private static String describeGranted(String grantedScopeValue) {
-        // Truncated like every other echoed server field: this one is quoted straight out of the
-        // response body into an exception message that will end up in someone's log.
-        return grantedScopeValue == null
-                ? "carried no scope field at all"
-                : "granted \"" + truncate(grantedScopeValue) + "\"";
+        return "granted " + ServerText.quoted(grantedScopeValue,
+                "carried no scope field at all");
     }
 
     /**
@@ -151,15 +145,10 @@ final class TokenResponseReader {
         for (String field : new String[] {FIELD_ERROR, FIELD_ERROR_DESCRIPTION}) {
             JsonNode candidate = root.get(field);
             if (candidate != null && candidate.isTextual() && !candidate.asText().isBlank()) {
-                detail.add(truncate(candidate.asText()));
+                detail.add(ServerText.safe(candidate.asText()));
             }
         }
         return detail.length() == 0 ? "" : ": " + detail;
     }
 
-    private static String truncate(String value) {
-        return value.length() <= MAX_ERROR_DETAIL_LENGTH
-                ? value
-                : value.substring(0, MAX_ERROR_DETAIL_LENGTH) + "...";
-    }
 }

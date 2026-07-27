@@ -204,6 +204,26 @@ Two consequences that are easy to get backwards:
 The SDK derives `change` when the caller does not set it, precisely so the ordinary overpayment path
 cannot reach an error whose message is empty.
 
+## An advance-payment settlement is informational and stays out of the till equation
+
+*Confirmed 2026-07-27 by direct probe.*
+
+`settlementAdvancePayment` reads as though it should reduce what the customer hands over —
+`requiredAdditionalPayment` is even described as "amount due after accounting for advance payment".
+It does not. The register ignores it when balancing:
+
+| Advance | `totalPaid` | Result |
+|---|---|---|
+| 2000, `requiredAdditionalPayment` 8000 | full sale (10000) | **202** |
+| 2000, no `requiredAdditionalPayment` | full sale (10000) | **202** |
+| 2000, `requiredAdditionalPayment` 8000 | sale less the advance (8000) | **400 errorCode 87** |
+| 2000, no `requiredAdditionalPayment` | sale less the advance (8000) | **400 errorCode 87** |
+| 2000, `requiredAdditionalPayment` 8000 | full sale, `change` 2000 declared | **400 errorCode 87** |
+
+So the block is printed, not computed with, and `requiredAdditionalPayment` is optional and unchecked.
+The SDK therefore leaves it out of `amountDue` — which is what it already did, now verified rather
+than assumed.
+
 ## The `PackageReturn` schema is right and the vendor's own example is wrong
 
 *Confirmed 2026-07-27.*
