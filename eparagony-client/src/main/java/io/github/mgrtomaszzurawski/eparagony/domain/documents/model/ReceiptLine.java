@@ -97,7 +97,15 @@ public record ReceiptLine(
     public Amount contributionToTotal() {
         int total = totalLineValue.grosze();
         for (RebateOrMarkup adjustment : rebatesMarkups) {
-            total = Math.addExact(total, adjustment.value().grosze());
+            try {
+                total = Math.addExact(total, adjustment.value().grosze());
+            } catch (ArithmeticException overflow) {
+                // Called from ReceiptRequest's builder AND its canonical constructor, both of which
+                // report every other arithmetic failure as IllegalArgumentException naming the amount.
+                throw new IllegalArgumentException("line \"" + productOrServiceName
+                        + "\" overflows while applying " + adjustment.value()
+                        + "; amounts are grosze in a 32-bit integer", overflow);
+            }
         }
         return Amount.ofGrosze(total);
     }

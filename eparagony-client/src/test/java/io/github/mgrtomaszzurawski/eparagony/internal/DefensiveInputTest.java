@@ -22,6 +22,7 @@ import io.github.mgrtomaszzurawski.eparagony.EparagonyClient;
 import io.github.mgrtomaszzurawski.eparagony.core.auth.ClientCredentials;
 import io.github.mgrtomaszzurawski.eparagony.core.config.EparagonyConfig;
 import io.github.mgrtomaszzurawski.eparagony.core.retry.RetryPolicy;
+import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyAuthException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyRateLimitException;
 import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyServerException;
 import io.github.mgrtomaszzurawski.eparagony.core.model.Amount;
@@ -52,6 +53,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -106,6 +108,61 @@ class DefensiveInputTest {
         assertTrue(failure.getMessage().contains("header"),
                 "the message must say why, but said: " + failure.getMessage());
         assertThrows(IllegalArgumentException.class, () -> IdempotencyKey.of("key-1\nsecond"));
+    }
+
+    @Test
+    @DisplayName("refuses a token lifetime that would make it re-mint on every call")
+    void refusesNonPositiveTokenLifetime() {
+        // A token born expired still "works": the cache simply mints a new one per request, which is
+        // the documented way to earn a 429 from this API — arriving later, as a mystery.
+        server.stubFor(post(urlPathEqualTo(TOKEN_PATH)).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"access_token\":\"opaque\",\"token_type\":\"Bearer\","
+                        + "\"expires_in\":0,\"scope\":\"document_create\"}")));
+
+        Documents documents = client().documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
+        EparagonyAuthException failure =
+                assertThrows(EparagonyAuthException.class, () -> documents.status(token));
+
+        assertTrue(failure.getMessage().contains("expires_in"),
+                "the message must name the field, but said: " + failure.getMessage());
+    }
+
+    @Test
+    @DisplayName("refuses a token lifetime that would overflow the expiry instant")
+    void refusesImplausibleTokenLifetime() {
+        // Long.MAX_VALUE seconds overflows Instant.plusSeconds, which would surface as a bare
+        // ArithmeticException from outside the SDK's exception hierarchy.
+        server.stubFor(post(urlPathEqualTo(TOKEN_PATH)).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"access_token\":\"opaque\",\"token_type\":\"Bearer\","
+                        + "\"expires_in\":" + Long.MAX_VALUE + ",\"scope\":\"document_create\"}")));
+
+        Documents documents = client().documents();
+        DocumentToken token = DocumentToken.of(DOCUMENT_TOKEN);
+
+        assertThrows(EparagonyAuthException.class, () -> documents.status(token));
+    }
+
+    @Test
+    @DisplayName("bounds a malformed token echoed back from the server")
+    void boundsAMalformedServerToken() {
+        // The value rides on the CAUSE as well as the message, and log.error(msg, ex) prints the
+        // cause verbatim — so the sanitizing has to happen where the exception is built, not only
+        // where it is caught.
+        String hostile = "not-a-uuid\r\n" + "z".repeat(5_000);
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> DocumentToken.of(hostile));
+
+        assertFalse(failure.getMessage().contains("\n"),
+                "the cause must not carry a line break into a log");
+        assertTrue(failure.getMessage().length() < hostile.length(),
+                "the cause must not carry the whole value: " + failure.getMessage().length());
     }
 
     @Test

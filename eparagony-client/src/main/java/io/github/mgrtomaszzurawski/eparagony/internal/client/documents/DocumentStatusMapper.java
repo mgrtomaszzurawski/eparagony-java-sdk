@@ -113,7 +113,7 @@ public final class DocumentStatusMapper {
             IllegalArgumentException cause) {
         return new EparagonyServerException(
                 "Server sent a '" + field + "' this SDK cannot model: "
-                        + ServerText.safe(cause.getMessage()), cause, false);
+                        + ServerText.quoted(cause.getMessage(), "(no detail)"), cause, false);
     }
 
     private static FiscalDeviceUniqueNumber fiscalDevice(JsonNode root) {

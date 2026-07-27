@@ -16,6 +16,8 @@
  */
 package io.github.mgrtomaszzurawski.eparagony.core.model;
 
+import io.github.mgrtomaszzurawski.eparagony.internal.ServerText;
+
 import java.util.Objects;
 import java.util.UUID;
 
@@ -37,8 +39,12 @@ public record TransactionToken(String value) {
     public TransactionToken {
         Objects.requireNonNull(value, "value");
         if (!UUID_SHAPE.matcher(value).matches()) {
+            // Sanitized here, not only where this is caught. The value comes off the wire, and the
+            // translating catch upstream attaches THIS exception as the cause — so log.error(msg, ex)
+            // would print an unbounded, CR/LF-bearing server string under "Caused by:", straight past
+            // the one place that was supposed to bound it.
             throw new IllegalArgumentException(
-                    "transactionToken must be a UUID but was \"" + value + "\"");
+                    "transactionToken must be a UUID but was " + ServerText.quoted(value, "null"));
         }
     }
 

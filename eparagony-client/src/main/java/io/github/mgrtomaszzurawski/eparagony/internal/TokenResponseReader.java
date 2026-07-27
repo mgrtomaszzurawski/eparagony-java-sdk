@@ -45,6 +45,8 @@ final class TokenResponseReader {
 
     private static final String DEFAULT_TOKEN_TYPE = "Bearer";
     private static final int HTTP_SERVER_ERROR_MIN = 500;
+    /** A year. The sandbox issues 3600; anything past this is a malformed response, not a long lease. */
+    private static final long MAX_TOKEN_LIFETIME_SECONDS = 365L * 24 * 60 * 60;
 
     private final JsonCodec codec;
     private final Clock clock;
@@ -74,17 +76,38 @@ final class TokenResponseReader {
         Set<Scope> granted = Scope.parseWireValue(grantedScopeValue);
         requireScopesGranted(granted, requestedScopes, requestedScopeValue, grantedScopeValue);
 
-        JsonNode expiresIn = root.get(FIELD_EXPIRES_IN);
-        if (expiresIn == null || !expiresIn.isNumber()) {
-            throw new EparagonyAuthException(
-                    "Authorization server returned a token without a usable expires_in");
-        }
+        long lifetimeSeconds = readLifetime(root.get(FIELD_EXPIRES_IN));
         JsonNode tokenType = root.get(FIELD_TOKEN_TYPE);
         return new AccessToken(
                 value.asText(),
                 tokenType != null && tokenType.isTextual() ? tokenType.asText() : DEFAULT_TOKEN_TYPE,
                 granted,
-                clock.instant().plusSeconds(expiresIn.asLong()));
+                clock.instant().plusSeconds(lifetimeSeconds));
+    }
+
+    /**
+     * Reads {@code expires_in}, refusing a lifetime that cannot be used.
+     *
+     * <p>{@code isNumber()} alone was not enough, in both directions. A huge value overflows
+     * {@code Instant.plusSeconds} and surfaces as an {@code ArithmeticException} from outside the
+     * {@code EparagonyException} hierarchy. A zero or negative one is worse because it works: the
+     * token is born expired, so the cache mints a fresh one for every single call — which is the
+     * documented way to earn a {@code 429} from this API, arriving as a mystery.
+     */
+    private static long readLifetime(JsonNode expiresIn) {
+        if (expiresIn == null || !expiresIn.isNumber() || !expiresIn.canConvertToLong()) {
+            throw new EparagonyAuthException(
+                    "Authorization server returned a token without a usable expires_in");
+        }
+        long seconds = expiresIn.asLong();
+        if (seconds <= 0 || seconds > MAX_TOKEN_LIFETIME_SECONDS) {
+            throw new EparagonyAuthException(
+                    "Authorization server returned a token whose expires_in is " + seconds
+                            + " seconds, which is not a usable lifetime. A non-positive value would "
+                            + "make the SDK re-mint a token on every call, and the API rate-limits "
+                            + "exactly that.");
+        }
+        return seconds;
     }
 
     /** Turns a failed response into the exception whose remediation matches. */
@@ -118,8 +141,11 @@ final class TokenResponseReader {
     }
 
     private static String describeGranted(String grantedScopeValue) {
-        return "granted " + ServerText.quoted(grantedScopeValue,
-                "carried no scope field at all");
+        // Two whole clauses, not a shared prefix: the absent case is the documented live behaviour —
+        // HTTP 200 with no `scope` field at all — so this is the sentence a reader most often sees.
+        return grantedScopeValue == null
+                ? "carried no scope field at all"
+                : "granted " + ServerText.quoted(grantedScopeValue, "");
     }
 
     /**

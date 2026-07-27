@@ -89,6 +89,11 @@ class AuthScopeGuardTest {
 
         assertTrue(failure.getMessage().contains(Scope.DOCUMENT_CREATE.wireValue()),
                 "the failure must name the missing scope, but said: " + failure.getMessage());
+        // Pins the sentence, not just the scope name. This is the documented live behaviour — HTTP 200
+        // with no `scope` field — so it is the message a reader actually meets, and a refactor once
+        // garbled it into "the response granted carried no scope field at all" with every test green.
+        assertTrue(failure.getMessage().contains("the response carried no scope field at all"),
+                "the absent-scope case must read as a sentence, but said: " + failure.getMessage());
         // The point of the guard: fail at the token, never reaching the endpoint that would 403.
         server.verify(0, getRequestedFor(urlPathEqualTo(STATUS_PATH)));
     }

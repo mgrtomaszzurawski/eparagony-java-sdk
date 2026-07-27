@@ -54,6 +54,7 @@ final class DailyReportMapper {
     private static final String FIELD_COMMUNICATION_ERRORS = "communicationErrorsCount";
 
     private static final int ABSENT_COUNT = 0;
+    private static final String ABSENT_VALUE = "no value at all";
 
     private DailyReportMapper() {
     }
@@ -85,8 +86,8 @@ final class DailyReportMapper {
     /** Names what the server sent, bounded and single-line like every other echoed value. */
     private static String describe(JsonNode node) {
         return node == null || node.isNull()
-                ? "no value at all"
-                : ServerText.quoted(node.asText(), "no value at all");
+                ? ABSENT_VALUE
+                : ServerText.quoted(node.asText(), ABSENT_VALUE);
     }
 
     private static DailyReportCounters counters(JsonNode report) {

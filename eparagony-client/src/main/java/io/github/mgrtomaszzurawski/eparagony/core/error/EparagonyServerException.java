@@ -54,7 +54,15 @@ public final class EparagonyServerException extends EparagonyException {
         this.requestMayHaveBeenApplied = requestMayHaveBeenApplied;
     }
 
-    /** The HTTP status, or {@link #NO_HTTP_RESPONSE} when the failure was a network error or timeout. */
+    /**
+     * The HTTP status, or {@link #NO_HTTP_RESPONSE} when no response was ever produced — a connection
+     * failure, or an interrupt while waiting to retry.
+     *
+     * <p>A failure that <em>did</em> get answered reports the status it was answered with, even when
+     * that status was a success. Giving up waiting for a document to fiscalize is the case that makes
+     * the distinction matter: every poll returned {@code 200}, so reporting "no response" would be
+     * false.
+     */
     public int statusCode() {
         return statusCode;
     }

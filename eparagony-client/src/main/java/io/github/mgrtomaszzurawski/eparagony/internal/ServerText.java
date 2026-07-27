@@ -38,6 +38,10 @@ public final class ServerText {
     private static final int MAX_LENGTH = 200;
     private static final String ELLIPSIS = "...";
 
+    private static final int NEXT_LINE = 0x0085;
+    private static final int LINE_SEPARATOR = 0x2028;
+    private static final int PARAGRAPH_SEPARATOR = 0x2029;
+
     private ServerText() {
     }
 
@@ -46,10 +50,41 @@ public final class ServerText {
         if (value == null) {
             return null;
         }
-        String flattened = value.replace('\r', ' ').replace('\n', ' ');
-        return flattened.length() <= MAX_LENGTH
-                ? flattened
-                : flattened.substring(0, MAX_LENGTH) + ELLIPSIS;
+        StringBuilder flattened = new StringBuilder(Math.min(value.length(), MAX_LENGTH + 1));
+        value.codePoints().forEach(codePoint -> flattened.appendCodePoint(
+                isLineBreakOrControl(codePoint) ? ' ' : codePoint));
+        return truncate(flattened.toString());
+    }
+
+    /**
+     * Every character a reader or a tool might treat as a break, not only {@code \r} and {@code \n}.
+     *
+     * <p>The log-forging attack needs {@code \n}, and stripping that alone defeats it. The rest are
+     * here because "flattened to one line" should be true rather than nearly true: {@code less} and a
+     * terminal render VT, FF, NEL, U+2028 and U+2029 as breaks, and {@code Scanner} splits on them.
+     * ESC goes too — a value that reaches a terminal should not be able to move the cursor or set
+     * colours.
+     */
+    private static boolean isLineBreakOrControl(int codePoint) {
+        return codePoint == '\n' || codePoint == '\r' || codePoint == NEXT_LINE
+                || codePoint == LINE_SEPARATOR || codePoint == PARAGRAPH_SEPARATOR
+                || Character.getType(codePoint) == Character.CONTROL;
+    }
+
+    /**
+     * Cuts on a character boundary, never through a surrogate pair.
+     *
+     * <p>A lone surrogate is not valid text: a JSON log encoder throws on it, which would suppress the
+     * very line recording the suspicious value.
+     */
+    private static String truncate(String value) {
+        if (value.length() <= MAX_LENGTH) {
+            return value;
+        }
+        int cutPoint = Character.isHighSurrogate(value.charAt(MAX_LENGTH - 1))
+                ? MAX_LENGTH - 1
+                : MAX_LENGTH;
+        return value.substring(0, cutPoint) + ELLIPSIS;
     }
 
     /** The same, quoted, with an explicit stand-in when the server sent nothing to quote. */

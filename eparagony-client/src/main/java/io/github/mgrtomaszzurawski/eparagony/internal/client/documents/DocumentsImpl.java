@@ -67,10 +67,10 @@ public final class DocumentsImpl implements Documents {
     /** {@code 202} means the data was accepted and the register is still working. */
     private static final int HTTP_ACCEPTED = 202;
     /**
-     * The last poll succeeded; the SDK stopped waiting. Reported as {@code 200} rather than the
-     * "no response" sentinel because a response is exactly what every poll got.
+     * What the last poll actually answered. Reported instead of the "no response" sentinel because a
+     * response is exactly what every poll got; only the document had not settled.
      */
-    private static final int HTTP_POLL_TIMED_OUT = 200;
+    private static final int HTTP_LAST_POLL_OK = 200;
 
     /** How long to wait between status polls. Fiscalization takes seconds, not milliseconds. */
     private static final Duration POLL_INTERVAL = Duration.ofSeconds(2);
@@ -148,7 +148,7 @@ public final class DocumentsImpl implements Documents {
      * message says so outright, because a caller who reads the flag as "not fiscalized" and reissues
      * would charge the customer twice.
      *
-     * <p>{@code HTTP_POLL_TIMED_OUT}, not {@code NO_HTTP_RESPONSE}: every poll answered {@code 200}.
+     * <p>{@code HTTP_LAST_POLL_OK}, not {@code NO_HTTP_RESPONSE}: every poll answered {@code 200}.
      * Claiming no response was ever produced would be false, and the sentinel exists for genuine
      * transport failures.
      */
@@ -159,7 +159,7 @@ public final class DocumentsImpl implements Documents {
                         + "; it has not failed, it has not settled yet. The document exists and is"
                         + " being fiscalized — keep polling or wait for the webhook. Do not reissue"
                         + " it; that would fiscalize the sale twice.",
-                HTTP_POLL_TIMED_OUT, false);
+                HTTP_LAST_POLL_OK, false);
     }
 
     @Override

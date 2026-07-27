@@ -65,10 +65,10 @@ produces that report, so running `check` then `sonar` is the correct order.
 | Gate | Result |
 |---|---|
 | Spotless / Checkstyle / PMD / SpotBugs | 0 violations |
-| JUnit (unit + contract) | 517 tests, 0 skipped, 0 failures |
+| JUnit (unit + contract) | 528 tests, 0 skipped, 0 failures |
 | JaCoCo | instruction 83%, line 84%, branch 63%, method 82%, class 93% |
 | Live sandbox `e2eTest` | 5 tests, **0 skipped**, 0 failures |
-| SonarQube | 0 bugs, 0 vulnerabilities, 0 hotspots, 0 open smells, coverage 77%, A/A/A |
+| SonarQube | 0 bugs, 0 vulnerabilities, 0 hotspots, 0 open smells, coverage 78%, A/A/A |
 
 Two Sonar findings carry a recorded decision rather than a fix, and both are visible on the board with
 their justification: the retry loop's multiple `continue` statements (marked won't-fix — collapsing
@@ -130,7 +130,7 @@ shared structures, not what a caller can actually set.
 
 ## Current coverage, honestly
 
-Instruction 83%, line 84%, branch 63%, method 83%, class 95%. No floor is enforced yet; a ratchet
+Instruction 83%, line 84%, branch 63%, method 82%, class 93%. No floor is enforced yet; a ratchet
 lands once the baseline has settled rather than being set to whatever today happens to be.
 
 Live-verified: `POST /auth/token`, `POST /documents`, `GET /documents/{token}/status`,
