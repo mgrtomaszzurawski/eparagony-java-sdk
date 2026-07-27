@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -177,14 +178,12 @@ class ReceiptRequestBuilderTest {
         assertEquals(-500, rebate.value().grosze());
         assertEquals(500, markup.value().grosze());
         assertTrue(rebate.isRebate());
-        assertTrue(!markup.isRebate());
+        assertFalse(markup.isRebate());
     }
 
     @Test
     @DisplayName("counts a standalone rebate line against the sale total")
     void countsRebateLineAgainstTheTotal() {
-        // A rebate LINE reduces the receipt; a rebate attached to a product line does not change that
-        // line's total. Only the former participates in the reconciliation.
         ReceiptRequest request = ReceiptRequest.builder()
                 .addLine(line(Amount.ofGrosze(10000)))
                 .addRebateLine(ReceiptRebateLine.of("Rabat -10%", Amount.ofGrosze(1000)))
@@ -196,6 +195,51 @@ class ReceiptRequestBuilderTest {
     }
 
     @Test
+    @DisplayName("counts a line's own rebates against the sale total too")
+    void countsLineRebatesAgainstTheTotal() {
+        // Both mechanisms reduce the sale. `totalLineValue` is defined as the value BEFORE discounts,
+        // so a line discount never shows up there and `grossSaleValue` has to carry it. Getting this
+        // wrong is not a rounding difference: the sandbox rejects the document outright with
+        // errorCode 41, "Incorrectly calculated value of 'eReceipt.metadata.grossSaleValue'".
+        ReceiptRequest request = ReceiptRequest.builder()
+                .addLine(ReceiptLine.builder()
+                        .productOrServiceName("Karma")
+                        .quantity(1)
+                        .unitPrice(Amount.ofGrosze(10000))
+                        .taxRate(TaxRateCode.A)
+                        .addRebate(RebateOrMarkup.rebate("Rabat na pozycji", Amount.ofGrosze(300)))
+                        .build())
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(9700)))
+                .build();
+
+        assertEquals(9700, request.grossSaleValue().grosze());
+    }
+
+    @Test
+    @DisplayName("reconciles the specification's own worked example")
+    void reconcilesTheSpecificationExample() {
+        // The "Paragon - wszystkie dane" example: a 9802 line carrying a +100 markup, a standalone
+        // -100 rebate line, and a declared grossSaleValue of 9802. That figure only adds up if BOTH
+        // adjustments participate, which is what makes the example a usable oracle.
+        ReceiptRequest request = ReceiptRequest.builder()
+                .addLine(ReceiptLine.builder()
+                        .productOrServiceName("T-shirt")
+                        .quantity(new BigDecimal("2"))
+                        .unitPrice(Amount.ofGrosze(4901))
+                        .taxRate(TaxRateCode.A)
+                        .addRebate(RebateOrMarkup.markup("Red color surcharge", Amount.ofGrosze(100)))
+                        .build())
+                .addRebateLine(ReceiptRebateLine.of("Rabat dla stalych klientow",
+                        Amount.ofGrosze(100), TaxRateCode.A))
+                .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(10000)))
+                .grossSaleValue(Amount.ofGrosze(9802))
+                .change(Amount.ofGrosze(198))
+                .build();
+
+        assertEquals(9802, request.grossSaleValue().grosze());
+    }
+
+    @Test
     @DisplayName("rejects a receipt whose rebate line is not reflected in the declared total")
     void rejectsUnreconciledRebateLine() {
         ReceiptRequest.Builder request = ReceiptRequest.builder()
@@ -204,7 +248,25 @@ class ReceiptRequestBuilderTest {
                 .addPayment(PaymentEntry.of(PaymentForm.CASH, Amount.ofGrosze(10000)))
                 .grossSaleValue(Amount.ofGrosze(10000));
 
-        assertThrows(IllegalArgumentException.class, request::build);
+        IllegalArgumentException failure =
+                assertThrows(IllegalArgumentException.class, request::build);
+
+        // Naming both figures is what separates "the rebate was dropped from the sum" from "the
+        // rebate was added with the wrong sign"; a bare assertThrows passes for either.
+        assertTrue(failure.getMessage().contains("100.00 PLN")
+                        && failure.getMessage().contains("90.00 PLN"),
+                "the message must name both figures, but said: " + failure.getMessage());
+    }
+
+    @Test
+    @DisplayName("carries the chosen VAT slot on a rebate line, and omits it when unset")
+    void carriesTheRebateLineTaxRate() {
+        // Left unset the register spreads the discount across every rate in play; set, it charges one
+        // slot. Different VAT totals, so the caller has to be able to say which.
+        assertEquals(TaxRateCode.A,
+                ReceiptRebateLine.of("Rabat", Amount.ofGrosze(100), TaxRateCode.A).taxRate());
+        assertTrue(ReceiptRebateLine.of("Rabat", Amount.ofGrosze(100))
+                .taxRateIfPresent().isEmpty());
     }
 
     private static ReceiptLine line(Amount total) {

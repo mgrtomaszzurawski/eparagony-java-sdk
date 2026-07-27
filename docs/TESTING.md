@@ -108,6 +108,14 @@ The receipt denominator now includes the `LineRebate` branch of the line list, w
 unimplemented and therefore silently outside the count. A denominator that omits an unimplemented
 branch cannot yield an honest 100%.
 
+**The receipt figure read 100% while a leaf was unmapped, and the tool could not have told you.**
+Pre-merge review found that `LineRebate.taxRate` was never set. The tool still scored the receipt at
+126/126, because it unions `oneOf` branches and `lines[].taxRate` was already covered by the product
+branch — one leaf name, two branches, one tick. That is the shared-class upper bound in the tool's own
+caveat list, arriving in practice. The leaf is mapped now and the figure is honest, but the lesson is
+the durable part: **a depth figure cannot see a branch-specific leaf that shares a name with a mapped
+one.** Only reading the mapper against the branch schema finds those.
+
 **A depth figure alone is not enough, and `FullReceiptPayloadTest` is why.** The tool measures that a
 mapper *invokes* each Layer-1 setter; it cannot see whether the value handed to it is one the server
 accepts. That test pins the full wire body of a receipt using every optional structure, and on its

@@ -30,6 +30,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -51,6 +52,7 @@ public final class HttpRuntime {
     private static final String HEADER_INTEGRATION_ID = "X-Integration-Id";
     private static final String HEADER_IDEMPOTENCY_KEY = "Idempotency-Key";
     private static final String HEADER_RETRY_AFTER = "Retry-After";
+    private static final long MAX_PLAUSIBLE_RETRY_AFTER_SECONDS = Duration.ofDays(1).toSeconds();
 
     private static final String MEDIA_TYPE_JSON = "application/json";
     private static final String METHOD_POST = "POST";
@@ -71,21 +73,18 @@ public final class HttpRuntime {
     private final JsonCodec codec;
     private final ErrorMapper errorMapper;
 
-    private ClientLifecycle lifecycle;
+    private final ClientLifecycle lifecycle;
 
     public HttpRuntime(HttpClient httpClient, EparagonyConfig config, String userAgent,
-            TokenManager tokenManager, JsonCodec codec, ErrorMapper errorMapper) {
+            TokenManager tokenManager, JsonCodec codec, ErrorMapper errorMapper,
+            ClientLifecycle lifecycle) {
         this.httpClient = httpClient;
         this.config = config;
         this.userAgent = userAgent;
         this.tokenManager = tokenManager;
         this.codec = codec;
         this.errorMapper = errorMapper;
-    }
-
-    /** Binds the owning client's lifecycle, so a closed client cannot issue through a stale facade. */
-    public void bindLifecycle(ClientLifecycle clientLifecycle) {
-        this.lifecycle = clientLifecycle;
+        this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
     }
 
     /** {@code GET path}, decoding the JSON response into {@code responseType}. */
@@ -149,9 +148,7 @@ public final class HttpRuntime {
      */
     private <T> T execute(String path, boolean idempotent, IdempotencyKey idempotencyKey,
             java.util.function.Supplier<HttpRequest> requestFactory, Function<RawResponse, T> decoder) {
-        if (lifecycle != null) {
-            lifecycle.ensureOpen();
-        }
+        lifecycle.ensureOpen();
         int attempt = 0;
         int retryIndex = FIRST_RETRY_INDEX;
         boolean reauthenticated = false;
@@ -259,7 +256,14 @@ public final class HttpRuntime {
         }
         try {
             long seconds = Long.parseLong(header.get().trim());
-            return seconds >= 0 ? Duration.ofSeconds(seconds) : null;
+            // Bounded, not just non-negative. This value is handed to the caller on
+            // EparagonyRateLimitException, and the obvious thing to do with it is
+            // Thread.sleep(retryAfter().toMillis()) — which throws ArithmeticException for a Duration
+            // near Long.MAX_VALUE. A wait of more than a day is not an instruction anyone can act on,
+            // so it is treated as unusable rather than propagated as a number that breaks arithmetic.
+            return seconds >= 0 && seconds <= MAX_PLAUSIBLE_RETRY_AFTER_SECONDS
+                    ? Duration.ofSeconds(seconds)
+                    : null;
         } catch (NumberFormatException notAnInteger) {
             // The HTTP-date form is legal but not honored as a floor; fall back to computed backoff.
             return null;

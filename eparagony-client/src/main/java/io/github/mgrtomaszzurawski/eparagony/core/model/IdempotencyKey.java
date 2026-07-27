@@ -35,6 +35,14 @@ public record IdempotencyKey(String value) {
         if (value.isBlank()) {
             throw new IllegalArgumentException("idempotencyKey must not be blank");
         }
+        // This value is caller-supplied and goes out as a header, so it gets the same CR/LF check as
+        // the other two that do. The JDK's own header builder would also reject it, but only at the
+        // moment of the call — by which point the caller is holding a key they believe is usable.
+        if (value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0) {
+            throw new IllegalArgumentException(
+                    "idempotencyKey must not contain a carriage return or line feed; it is sent as an "
+                            + "HTTP header");
+        }
     }
 
     public static IdempotencyKey of(String value) {

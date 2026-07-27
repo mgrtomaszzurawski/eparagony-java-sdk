@@ -121,9 +121,11 @@ final class TokenResponseReader {
     }
 
     private static String describeGranted(String grantedScopeValue) {
+        // Truncated like every other echoed server field: this one is quoted straight out of the
+        // response body into an exception message that will end up in someone's log.
         return grantedScopeValue == null
                 ? "carried no scope field at all"
-                : "granted \"" + grantedScopeValue + "\"";
+                : "granted \"" + truncate(grantedScopeValue) + "\"";
     }
 
     /**

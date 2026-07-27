@@ -34,6 +34,7 @@ import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PackageDepos
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentEntry;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentForm;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.RebateOrMarkup;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRebateLine;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptExtensions;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptMetadata;
@@ -130,7 +131,7 @@ class FullReceiptPayloadTest {
                         "fiscalize": true,
                         "print": true,
                         "metadata": {
-                          "grossSaleValue": 10000,
+                          "grossSaleValue": 9000,
                           "orderId": "ORDER-1183",
                           "merchantDocumentId": "DOC-1183",
                           "cashRegisterId": "TILL-2",
@@ -179,6 +180,12 @@ class FullReceiptPayloadTest {
                               "periodUnit": "MONTH",
                               "additionalDescription": "Gwarancja producenta"
                             }
+                          },
+                          {
+                            "type": "REBATE",
+                            "value": -700,
+                            "name": "Rabat dla stalych klientow",
+                            "taxRate": "A"
                           }
                         ],
                         "payment": {
@@ -200,7 +207,7 @@ class FullReceiptPayloadTest {
                             }
                           ],
                           "totalPaid": 10000,
-                          "change": 0
+                          "change": 1000
                         },
                         "extensions": {
                           "recyclingDb": "BDO-12345",
@@ -310,6 +317,8 @@ class FullReceiptPayloadTest {
                         .warranty(Warranty.ofPeriod(24, Warranty.PeriodUnit.MONTH)
                                 .describedAs("Gwarancja producenta"))
                         .build())
+                .addRebateLine(ReceiptRebateLine.of("Rabat dla stalych klientow",
+                        Amount.ofGrosze(700), TaxRateCode.A))
                 .addPayment(PaymentEntry.builder(PaymentForm.CARD, Amount.ofGrosze(6000))
                         .name("Visa")
                         .loyaltyCardNo("LOY-9")
@@ -318,7 +327,7 @@ class FullReceiptPayloadTest {
                 .addPayment(PaymentEntry.builder(PaymentForm.VOUCHER, Amount.ofGrosze(4000))
                         .giftCard("GC-1", Amount.ofGrosze(4000))
                         .build())
-                .change(Amount.ofGrosze(0))
+                .change(Amount.ofGrosze(1000))
                 .extensions(ReceiptExtensions.builder()
                         .recyclingDb("BDO-12345")
                         .addLoyaltyMovement(ReceiptExtensions.LoyaltyMovement

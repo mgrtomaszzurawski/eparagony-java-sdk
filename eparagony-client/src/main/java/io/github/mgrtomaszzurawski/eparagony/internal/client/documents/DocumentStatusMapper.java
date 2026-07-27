@@ -17,6 +17,7 @@
 package io.github.mgrtomaszzurawski.eparagony.internal.client.documents;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.github.mgrtomaszzurawski.eparagony.core.error.EparagonyServerException;
 import io.github.mgrtomaszzurawski.eparagony.core.model.DocumentToken;
 import io.github.mgrtomaszzurawski.eparagony.core.model.FiscalDeviceUniqueNumber;
 import io.github.mgrtomaszzurawski.eparagony.core.model.TransactionToken;
@@ -81,12 +82,37 @@ public final class DocumentStatusMapper {
 
     private static DocumentToken documentToken(JsonNode root) {
         String value = JsonReader.text(root, FIELD_DOCUMENT_TOKEN);
-        return value == null ? null : DocumentToken.of(value);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return DocumentToken.of(value);
+        } catch (IllegalArgumentException malformed) {
+            throw malformedToken(FIELD_DOCUMENT_TOKEN, malformed);
+        }
     }
 
     private static TransactionToken transactionToken(JsonNode root) {
         String value = JsonReader.text(root, FIELD_TRANSACTION_TOKEN);
-        return value == null ? null : TransactionToken.of(value);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return TransactionToken.of(value);
+        } catch (IllegalArgumentException malformed) {
+            throw malformedToken(FIELD_TRANSACTION_TOKEN, malformed);
+        }
+    }
+
+    /**
+     * Keeps a shape violation inside the {@code EparagonyException} hierarchy. Both callers are reads
+     * — the polling endpoint and the webhook — so nothing was applied by the request that produced it.
+     */
+    private static EparagonyServerException malformedToken(String field,
+            IllegalArgumentException cause) {
+        return new EparagonyServerException(
+                "Server sent a '" + field + "' this SDK cannot model: " + cause.getMessage(),
+                cause, false);
     }
 
     private static FiscalDeviceUniqueNumber fiscalDevice(JsonNode root) {

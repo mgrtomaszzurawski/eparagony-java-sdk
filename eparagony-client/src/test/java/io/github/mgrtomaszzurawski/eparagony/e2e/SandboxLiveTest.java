@@ -32,7 +32,9 @@ import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.DocumentStat
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.IssuedDocument;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentEntry;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.PaymentForm;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.RebateOrMarkup;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine;
+import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRebateLine;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptRequest;
 import io.github.mgrtomaszzurawski.eparagony.domain.documents.model.TaxRateCode;
 import io.github.mgrtomaszzurawski.eparagony.domain.printers.model.PrinterState;
@@ -79,6 +81,8 @@ class SandboxLiveTest {
 
     private static final Duration FISCALIZATION_TIMEOUT = Duration.ofMinutes(3);
     private static final int RECEIPT_TOTAL_GROSZE = 10000;
+    private static final int LINE_REBATE_GROSZE = 300;
+    private static final int STANDALONE_REBATE_GROSZE = 100;
 
     @Test
     @DisplayName("issues a receipt and follows it through to CONFIRMED")
@@ -106,6 +110,29 @@ class SandboxLiveTest {
             // Device-side values are present but constant on the emulator; assert presence, not value.
             assertTrue(status.fiscalDocumentId().isPresent());
             assertTrue(status.documentUrl().orElseThrow().startsWith("https://"));
+        }
+    }
+
+    @Test
+    @DisplayName("fiscalizes a discounted receipt, proving how the server reconciles rebates")
+    void issuesDiscountedReceipt() {
+        assumeCredentials();
+        String orderId = "SDK-E2E-REB-" + UUID.randomUUID().toString().substring(0, 8);
+
+        // The one thing a WireMock test cannot establish. `totalLineValue` is defined as the value
+        // before discounts, so both a line's own rebatesMarkups and a standalone REBATE line have to
+        // reach `grossSaleValue` — and the SDK computes that figure for the caller. Declaring it the
+        // other way is rejected at submission with 400 errorCode 41, "Incorrectly calculated value of
+        // 'eReceipt.metadata.grossSaleValue'", so this test going green is the proof that the SDK's
+        // arithmetic matches the register's rather than merely matching its own mock.
+        try (EparagonyClient client = client(Scope.DOCUMENT_CREATE)) {
+            IssuedDocument issued = client.documents().issue(discountedReceipt(orderId));
+
+            DocumentStatus status = client.documents()
+                    .awaitTerminalStatus(issued.documentToken(), FISCALIZATION_TIMEOUT);
+
+            assertEquals(DocumentState.CONFIRMED, status.state());
+            assertEquals(orderId, status.orderId().orElseThrow());
         }
     }
 
@@ -163,6 +190,33 @@ class SandboxLiveTest {
                         .build())
                 .addPayment(PaymentEntry.of(
                         PaymentForm.CARD, Amount.ofGrosze(RECEIPT_TOTAL_GROSZE), "Visa"))
+                .build();
+    }
+
+    /**
+     * The same sale carrying both discount mechanisms. The SDK derives {@code grossSaleValue} as
+     * {@code 10000 - 300 - 100 = 9600}; the payment covers exactly that.
+     */
+    private static ReceiptRequest discountedReceipt(String orderId) {
+        return ReceiptRequest.builder()
+                .orderId(orderId)
+                .merchantDocumentId(orderId)
+                .fiscalize(true)
+                .print(false)
+                .addLine(ReceiptLine.builder()
+                        .productOrServiceName("Karma sucha dla psa 1 kg")
+                        .unitOfMeasure("szt.")
+                        .quantity(1)
+                        .unitPrice(Amount.ofGrosze(RECEIPT_TOTAL_GROSZE))
+                        .taxRate(TaxRateCode.A)
+                        .addRebate(RebateOrMarkup.rebate("Rabat na pozycji",
+                                Amount.ofGrosze(LINE_REBATE_GROSZE)))
+                        .build())
+                .addRebateLine(ReceiptRebateLine.of("Rabat dla stalych klientow",
+                        Amount.ofGrosze(STANDALONE_REBATE_GROSZE), TaxRateCode.A))
+                .addPayment(PaymentEntry.of(PaymentForm.CARD,
+                        Amount.ofGrosze(RECEIPT_TOTAL_GROSZE - LINE_REBATE_GROSZE
+                                - STANDALONE_REBATE_GROSZE), "Visa"))
                 .build();
     }
 

@@ -288,6 +288,9 @@ final class ReceiptRequestMapper {
                             .ReceiptRebateLine.LINE_TYPE)
                     .value(rebateLine.value().grosze());
             rebateLine.nameIfPresent().ifPresent(mapped::name);
+            rebateLine.taxRateIfPresent()
+                    .map(slot -> LineRebate.TaxRateEnum.fromValue(slot.name()))
+                    .ifPresent(mapped::taxRate);
             return new ReceiptLine(mapped);
         }
         return toLine((io.github.mgrtomaszzurawski.eparagony.domain.documents.model.ReceiptLine) item);

@@ -31,8 +31,11 @@ import java.util.Optional;
  *
  * @param name what to print beside it, e.g. {@code "Rabat -10% na cały paragon"}
  * @param value signed per the specification: negative reduces the sale
+ * @param taxRate the VAT slot to charge the discount against, or {@code null} to let the register
+ *     distribute it proportionally across every rate on the receipt
  */
-public record ReceiptRebateLine(String name, Amount value) implements ReceiptLineItem {
+public record ReceiptRebateLine(String name, Amount value, TaxRateCode taxRate)
+        implements ReceiptLineItem {
 
     /** The discriminator this branch carries in the line list. */
     public static final String LINE_TYPE = "REBATE";
@@ -41,14 +44,43 @@ public record ReceiptRebateLine(String name, Amount value) implements ReceiptLin
         Objects.requireNonNull(value, "value");
     }
 
-    /** A receipt-wide discount of the given magnitude. Pass a positive amount. */
+    /**
+     * A receipt-wide discount of the given magnitude, distributed proportionally across every tax
+     * rate on the receipt. Pass a positive amount — the negative sign is applied here.
+     */
     public static ReceiptRebateLine of(String name, Amount magnitude) {
-        return new ReceiptRebateLine(name, Amount.ofGrosze(-Math.abs(magnitude.grosze())));
+        return of(name, magnitude, null);
+    }
+
+    /**
+     * A discount of the given magnitude charged against one VAT slot. Pass a positive amount.
+     *
+     * <p>Which slot a discount lands in is a fiscal decision, not a formatting one: left unset the
+     * register spreads it across every rate in play, which produces different VAT totals from
+     * charging it wholly to one.
+     */
+    public static ReceiptRebateLine of(String name, Amount magnitude, TaxRateCode taxRate) {
+        return new ReceiptRebateLine(name, Amount.ofGrosze(-Math.absExact(magnitude.grosze())),
+                taxRate);
+    }
+
+    /**
+     * A receipt-wide <em>surcharge</em> of the given magnitude. The same wire shape as {@link #of}
+     * with the opposite sign — the specification models both through one {@code REBATE} line.
+     */
+    public static ReceiptRebateLine markup(String name, Amount magnitude, TaxRateCode taxRate) {
+        return new ReceiptRebateLine(name, Amount.ofGrosze(Math.absExact(magnitude.grosze())),
+                taxRate);
     }
 
     /** What to print, when the caller supplied it. Optional per the specification. */
     public Optional<String> nameIfPresent() {
         return Optional.ofNullable(name);
+    }
+
+    /** The VAT slot charged, when one was chosen rather than left to proportional distribution. */
+    public Optional<TaxRateCode> taxRateIfPresent() {
+        return Optional.ofNullable(taxRate);
     }
 
     @Override

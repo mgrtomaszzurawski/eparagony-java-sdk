@@ -141,6 +141,36 @@ Refused with `400 invalid_scope`: `document_action_get`, `document_get_jws`, `re
   (`productOrServiceName` instead of `name`, a string `quantity`, no `packageNumber`), so this one
   wants a live probe before it is trusted in production.
 
+## `grossSaleValue` must net BOTH discount mechanisms, and the server checks
+
+*Confirmed 2026-07-27 by direct probe — three receipts posted to the sandbox.*
+
+A receipt can reduce the sale two ways: `rebatesMarkups` attached to a product line, and a standalone
+`REBATE` line. Both must be reflected in `metadata.grossSaleValue`. Line-level rebates are **not**
+already inside `totalLineValue` — the specification defines that field as the gross value "before
+applying any markups and discounts", so it never moves.
+
+Same shape, one product line of 10000 carrying a `-300` line rebate plus a `-100` standalone rebate
+line, posted three ways:
+
+| Declared `grossSaleValue` | Reading | Result |
+|---|---|---|
+| 9802 (the spec's own worked example) | both count | **202** → `CONFIRMED` |
+| 9600 | both count | **202** → `CONFIRMED` |
+| 9900 | only the `REBATE` line counts | **400** `{"errorCode":41,"message":"Incorrectly calculated value of 'eReceipt.metadata.grossSaleValue'"}` |
+
+This is one of the few places the sandbox validates arithmetic rather than rubber-stamping it, so it
+is worth knowing that a mistake here fails loudly at submission rather than silently at the register.
+
+The specification's `Paragon - wszystkie dane` example is a usable oracle for this: a 9802 line with a
+`+100` markup and a `-100` `REBATE` line declaring `grossSaleValue: 9802`. That total only reconciles
+if both adjustments participate. The SDK derives the figure so a caller never has to.
+
+Note the asymmetry with invoices, which is what makes the receipt rule easy to get backwards:
+`FullInvoiceLine.totalLineValue` *may* already include its rebates, governed by
+`rebatesMarkups.includedInTotalLineValue`. That flag exists on the invoice line and not on the receipt
+line precisely because a receipt's discounts always sit outside the line total.
+
 ## Observed timings
 
 *Sandbox, 2026-07-26.* Access token lifetime `expires_in: 3600`. A fiscalized receipt reached

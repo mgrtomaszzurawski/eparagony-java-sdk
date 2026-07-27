@@ -188,12 +188,25 @@ public final class DocumentsImpl implements Documents {
 
     private IssuedDocument toIssuedDocument(RawResponse response) {
         JsonNode root = codec.readTree(response.body());
-        return new IssuedDocument(
-                TransactionToken.of(required(root, FIELD_TRANSACTION_TOKEN)),
-                DocumentToken.of(required(root, FIELD_DOCUMENT_TOKEN)),
-                required(root, FIELD_DOCUMENT_PUBLIC_URL),
-                required(root, FIELD_DOCUMENT_STATUS_URL),
-                response.statusCode() == HTTP_ACCEPTED);
+        // The tokens are shape-checked, and this runs AFTER the sale has been fiscalized. A raw
+        // IllegalArgumentException here would escape the EparagonyException hierarchy, and the
+        // documented remediation for a failed issue() is to reissue — which would fiscalize twice.
+        // Translating it keeps the caller inside the hierarchy and inside the "do not blindly retry"
+        // contract, and the message carries the tokens so the sale is still traceable.
+        try {
+            return new IssuedDocument(
+                    TransactionToken.of(required(root, FIELD_TRANSACTION_TOKEN)),
+                    DocumentToken.of(required(root, FIELD_DOCUMENT_TOKEN)),
+                    required(root, FIELD_DOCUMENT_PUBLIC_URL),
+                    required(root, FIELD_DOCUMENT_STATUS_URL),
+                    response.statusCode() == HTTP_ACCEPTED);
+        } catch (IllegalArgumentException malformed) {
+            throw new EparagonyServerException(
+                    "The document was accepted but the server's response could not be modelled: "
+                            + malformed.getMessage()
+                            + ". Do not reissue — that would fiscalize the sale twice.",
+                    malformed, true);
+        }
     }
 
     /**

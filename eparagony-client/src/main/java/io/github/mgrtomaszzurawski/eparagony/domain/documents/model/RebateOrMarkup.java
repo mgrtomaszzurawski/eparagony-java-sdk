@@ -49,7 +49,7 @@ public record RebateOrMarkup(String name, Amount value) {
      * requires is applied here.
      */
     public static RebateOrMarkup rebate(String name, Amount magnitude) {
-        return new RebateOrMarkup(name, Amount.ofGrosze(-Math.abs(magnitude.grosze())));
+        return new RebateOrMarkup(name, Amount.ofGrosze(-Math.absExact(magnitude.grosze())));
     }
 
     /**
@@ -57,7 +57,9 @@ public record RebateOrMarkup(String name, Amount value) {
      * is what the specification reads as a markup.
      */
     public static RebateOrMarkup markup(String name, Amount magnitude) {
-        return new RebateOrMarkup(name, Amount.ofGrosze(Math.abs(magnitude.grosze())));
+        // absExact, not abs: Math.abs(Integer.MIN_VALUE) is itself negative, which would turn a
+        // surcharge into a discount rather than failing.
+        return new RebateOrMarkup(name, Amount.ofGrosze(Math.absExact(magnitude.grosze())));
     }
 
     /** {@code true} when this reduces the line — that is, when the signed value is negative. */

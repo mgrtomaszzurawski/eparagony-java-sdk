@@ -80,12 +80,12 @@ public final class EparagonyClient implements AutoCloseable {
         JsonCodec codec = new JsonCodec();
         String userAgent = userAgent(config);
         TokenManager tokenManager = new TokenManager(httpClient, config, userAgent, codec, clock);
+        // The lifecycle goes in through the constructor, not a setter: it is what makes a facade
+        // captured before close() stop working, and a runtime that can exist without one is a runtime
+        // some future construction site forgets to bind.
         HttpRuntime httpRuntime = new HttpRuntime(
-                httpClient, config, userAgent, tokenManager, codec, new ErrorMapper(codec));
+                httpClient, config, userAgent, tokenManager, codec, new ErrorMapper(codec), lifecycle);
         ScopeGuard scopeGuard = new ScopeGuard(config.scopes());
-        // Handed to the facades so a reference captured before close() stops working too — the
-        // accessor check alone only guards the path through this object.
-        httpRuntime.bindLifecycle(lifecycle);
         this.documents = new DocumentsImpl(httpRuntime, codec, config.posId(), clock, scopeGuard);
         this.printers = new PrintersImpl(httpRuntime, codec, scopeGuard);
     }

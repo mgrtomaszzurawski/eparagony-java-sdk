@@ -83,9 +83,23 @@ public record ReceiptLine(
         additionalDescription = List.copyOf(Objects.requireNonNullElse(additionalDescription, List.of()));
     }
 
+    /**
+     * The line total <em>plus its own discounts and surcharges</em>.
+     *
+     * <p>Not simply {@link #totalLineValue()}. The specification defines that field as the gross
+     * value "before applying any markups and discounts", which puts {@link #rebatesMarkups()} outside
+     * it and leaves {@code grossSaleValue} to carry them. The sandbox agrees and is the reason this
+     * reads the way it does: a receipt declaring a gross value that omitted the line discount was
+     * rejected at submission with {@code 400 errorCode 41, "Incorrectly calculated value of
+     * 'eReceipt.metadata.grossSaleValue'"}, while the same receipt counting it fiscalized.
+     */
     @Override
     public Amount contributionToTotal() {
-        return totalLineValue;
+        int total = totalLineValue.grosze();
+        for (RebateOrMarkup adjustment : rebatesMarkups) {
+            total = Math.addExact(total, adjustment.value().grosze());
+        }
+        return Amount.ofGrosze(total);
     }
 
     /** Starts a line. */
